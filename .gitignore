@@ -1,0 +1,44 @@
+# Dependencies and build output
+node_modules/
+dist/
+bin/
+obj/
+*.tsbuildinfo
+
+# IDE and machine-specific settings
+.idea/
+.vs/
+*.DotSettings.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.DS_Store
+._*
+Thumbs.db
+
+# Local environment and secrets (keep shareable templates)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Test results, coverage, logs, and caches
+playwright-report/
+playwright/.cache/
+test-results/
+TestResults/
+coverage/
+*.trx
+*.log
+.vite/
+.cache/
+.tools/
+
+# Local agent instructions and installed skills
+AGENTS.md
+skills-lock.json
+.agents/
+.claude/
+.codex/

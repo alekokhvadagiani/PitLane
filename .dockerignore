@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/bin
+**/obj
+.git
+.agents
+.claude
+.idea
+.tools
+**/test-results
+**/playwright-report
+.env*
