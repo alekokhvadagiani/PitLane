@@ -13,7 +13,7 @@ public sealed class FoundationCapabilityCatalog : ICapabilityCatalog
 {
     public CapabilityResponse GetCapabilities() => new("foundation", [
         new("live", "notIntegrated", "Live session integration is not available yet."),
-        new("replay", "catalogAvailable", "Historical meeting and session selection is available. Replay timing and position data are not loaded yet."),
+        new("replay", "sessionReplayPreview", "Session replay, recorded running order, and selected-car telemetry are available where OpenF1 provides those streams."),
         new("telemetry", "notIntegrated", "Driver telemetry integration is not available yet."),
         new("radio", "notIntegrated", "Team radio integration is not available yet.")
     ]);

@@ -1,6 +1,6 @@
 # PitLane
 
-A personal Formula 1 pit wall for timing, historical replay, telemetry, and available team radio. The app has a responsive shell and a real OpenF1 historical meeting/session catalog in Replay mode. Selecting a session does not imply replay streams are available. The circuit is an illustration, not recorded track geometry or car positions.
+A personal Formula 1 pit wall for timing, historical replay, session weather, telemetry, and available team radio. Replay mode browses OpenF1 sessions and supports selected-lap playback from bounded position samples. Weather is shown when available. The plotted lap trace uses provider coordinates and is not surveyed circuit geometry; full-session race replay is still planned.
 
 ## Run locally
 
@@ -27,13 +27,17 @@ curl http://localhost:5050/api/health
 curl http://localhost:5050/api/capabilities
 curl 'http://localhost:5050/api/meetings?year=2025'
 curl 'http://localhost:5050/api/meetings/1254/sessions'
+curl 'http://localhost:5050/api/sessions/9693/weather'
+curl 'http://localhost:5050/api/sessions/9693/drivers'
+curl 'http://localhost:5050/api/sessions/9693/laps?driverNumber=1'
+curl 'http://localhost:5050/api/sessions/9693/positions?driverNumber=1&fromUtc=2025-03-16T04%3A18%3A00Z&toUtc=2025-03-16T04%3A19%3A00Z'
 ```
 
-The health endpoint checks the process, not upstream providers. Capability metadata reports implementation readiness, not session coverage. Historical catalog requests use OpenF1 and are cached in memory for 30 minutes. The catalog does not establish location, timing, telemetry, or radio availability.
+The health endpoint checks the process, not upstream providers. Capability metadata reports implementation readiness, not universal session coverage. Historical catalog, weather, driver, lap, and position-window requests use OpenF1 and are cached in memory for 30 minutes. Position requests require a driver and UTC interval no longer than three minutes. Selected-lap playback shows only returned position data and leaves gaps open; it does not imply all-session replay support.
 
 ### Swagger
 
-When running with the `http` launch profile (Development), open **http://localhost:5050/swagger** to inspect and call the API. Rider's `PitLane.Api: http` profile opens Swagger automatically. The OpenAPI document is at `/swagger/v1/swagger.json`; it includes capabilities and historical catalog endpoints. `/api/health` remains an operational health endpoint outside the generated API documentation.
+When running with the `http` launch profile (Development), open **http://localhost:5050/swagger** to inspect and call the API. Rider's `PitLane.Api: http` profile opens Swagger automatically. The OpenAPI document is at `/swagger/v1/swagger.json`; it includes capabilities, historical catalogs, weather, driver/lap data, and bounded position windows. `/api/health` remains an operational health endpoint outside the generated API documentation.
 
 Swagger UI and its JSON document are enabled only in Development. The Production Docker Compose setup does not expose Swagger.
 

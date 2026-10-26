@@ -8,6 +8,7 @@ builder.Services.AddSingleton<ICapabilityCatalog, FoundationCapabilityCatalog>()
 builder.Services.AddHealthChecks();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<OpenF1RequestGate>();
 builder.Services.AddHttpClient<IHistoricalSessionProvider, OpenF1HistoricalSessionProvider>(client =>
 {
     client.BaseAddress = new Uri("https://api.openf1.org/v1/");
@@ -21,7 +22,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "PitLane API",
         Version = "v1",
-        Description = "Personal Formula 1 workspace API. Historical meeting and session metadata is available from OpenF1; replay streams are not loaded yet."
+        Description = "Personal Formula 1 workspace API. Historical catalogs and bounded replay windows for recorded positions, classification, and car telemetry are available from OpenF1 where session coverage exists."
     });
 });
 

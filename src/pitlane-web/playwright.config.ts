@@ -10,7 +10,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop', use: { viewport: { width: 1440, height: 1100 } } },
+    { name: 'wide', use: { viewport: { width: 1920, height: 1080 } } },
+    { name: 'desktop', use: { viewport: { width: 1440, height: 900 } } },
     {
       name: 'mobile',
       use: {
