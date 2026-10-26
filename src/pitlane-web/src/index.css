@@ -786,6 +786,305 @@ h1 {
   border-radius: 6px;
   margin: 24px 0;
 }
+.replay-library {
+  margin-bottom: 24px;
+}
+.library-header {
+  min-height: 76px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #272d36;
+}
+.library-header .panel-title h2 {
+  font-size: 14px;
+}
+.library-header > div > p {
+  margin: 6px 0 0 26px;
+  color: #99a3b1;
+  font-size: 10px;
+}
+.year-picker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #a6afbb;
+  font-size: 10px;
+}
+.year-picker select {
+  min-height: 36px;
+  padding: 0 29px 0 11px;
+  border: 1px solid #38414d;
+  border-radius: 5px;
+  background: #151a21;
+  color: #f2f3f5;
+  font: inherit;
+}
+.year-picker select:focus-visible,
+.meeting-search input:focus-visible {
+  outline: 2px solid #ff8279;
+  outline-offset: 2px;
+}
+.library-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  min-height: 490px;
+}
+.meeting-column,
+.session-column {
+  min-width: 0;
+  padding: 15px 17px 10px;
+}
+.session-column {
+  border-left: 1px solid #272d36;
+}
+.list-heading {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.list-heading h3 {
+  font-size: 11px;
+  font-weight: 650;
+}
+.list-heading > span {
+  min-width: 22px;
+  padding: 3px 6px;
+  border: 1px solid #343b46;
+  border-radius: 4px;
+  color: #a8b1be;
+  text-align: center;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.meeting-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  border: 1px solid #303741;
+  border-radius: 5px;
+  color: #97a1af;
+  background: #0d1116;
+}
+.meeting-search:focus-within {
+  border-color: #727e8d;
+}
+.meeting-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e5e9ef;
+  font: inherit;
+  font-size: 10px;
+}
+.meeting-search input::placeholder {
+  color: #8792a0;
+}
+.meeting-search input:focus-visible {
+  outline: 0;
+}
+.meeting-list {
+  max-height: 375px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 3px;
+}
+.meeting-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  width: 100%;
+  gap: 4px 8px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  text-align: left;
+  color: #e8ebf0;
+  background: transparent;
+}
+.meeting-option:hover {
+  background: #171c23;
+}
+.meeting-option.selected {
+  border-color: #65332e;
+  background: #251a19;
+}
+.meeting-date {
+  grid-column: 1;
+  font-size: 9px;
+  color: #a8b1be;
+}
+.meeting-name {
+  grid-column: 1;
+  font-size: 11px;
+  font-weight: 650;
+}
+.meeting-location {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: #a2adbb;
+}
+.meeting-chevron {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+  color: #8894a3;
+}
+.meeting-option.selected .meeting-chevron {
+  color: #ff8279;
+}
+.library-message {
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: #a5afbd;
+  font-size: 10px;
+  line-height: 1.8;
+  text-align: center;
+}
+.library-error {
+  color: #ffc1bb;
+}
+.source-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 11px;
+  padding: 9px 3px 0;
+  border-top: 1px solid #252b33;
+  color: #99a3b1;
+  font-size: 9px;
+}
+.source-note a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #d7dde6;
+}
+.source-note a:hover {
+  color: #ff8279;
+}
+.session-list {
+  display: grid;
+  gap: 8px;
+}
+.session-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #303741;
+  border-radius: 5px;
+  text-align: left;
+  color: #e5e9ef;
+  background: #131820;
+}
+.session-option:hover {
+  border-color: #66717f;
+  background: #1a2029;
+}
+.session-option.selected {
+  border-color: #b6453b;
+  background: #281a19;
+}
+.session-type {
+  grid-column: 1;
+  color: #ff968e;
+  font-size: 9px;
+}
+.session-option strong {
+  grid-column: 1;
+  font-size: 12px;
+  font-weight: 650;
+}
+.session-time {
+  grid-column: 1;
+  color: #a4aebc;
+  font-size: 9px;
+}
+.session-empty {
+  min-height: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  padding: 24px;
+  color: #a1acba;
+  text-align: center;
+}
+.session-empty > svg {
+  color: #aeb9c7;
+}
+.session-empty p {
+  max-width: 230px;
+  font-size: 10px;
+  line-height: 1.9;
+}
+.selection-footer {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 13px 19px;
+  border-top: 1px solid #272d36;
+  color: #a2adbb;
+  font-size: 10px;
+}
+.selection-footer > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.selection-footer > div > svg {
+  flex: none;
+  color: #b6c0cc;
+}
+.selection-footer strong,
+.selection-footer small {
+  display: block;
+}
+.selection-footer strong {
+  color: #eef0f4;
+  font-size: 10px;
+  font-weight: 600;
+}
+.selection-footer small {
+  margin-top: 4px;
+  color: #a4aebb;
+  font-size: 9px;
+}
+.selection-footer p {
+  color: #a4aebb;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.selection-time {
+  flex: none;
+  font-size: 9px;
+  color: #b5bfcb;
+}
 .skip-link {
   position: fixed;
   top: -100px;
@@ -990,6 +1289,21 @@ h1 {
   }
   .dialog-title {
     font-size: 30px;
+  }
+}
+@media (max-width: 820px) {
+  .library-columns {
+    grid-template-columns: 1fr;
+  }
+  .session-column {
+    border-left: 0;
+    border-top: 1px solid #272d36;
+  }
+  .meeting-list {
+    max-height: 290px;
+  }
+  .session-empty {
+    min-height: 130px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -19,5 +19,9 @@ The [FastF1 documentation site](https://docs.fastf1.dev/) returned HTTP 403 to t
 - Radio URLs do not establish playback/republication rights. Before audio integration, review applicable upstream terms, expose only available clips, handle removed/expired URLs and browser playback errors, avoid autoplay, and do not download or redistribute a radio archive by default.
 - Historical cache should be bounded and keyed by provider, session, stream, version and window. Report stale/partial data; failures must never become fake success.
 
+## Historical catalog integration
+
+The OpenF1 meetings and sessions catalog is integrated behind `IHistoricalSessionProvider`. Requests are bounded to one season or meeting, cached in memory for 30 minutes, and report `source` and `retrievedAtUtc`. The UI exposes the catalog and keeps selected year/meeting/session in the URL. A real OpenF1 meeting catalog response was observed during implementation. This proves catalog access only, not replay-stream coverage. A numeric OpenF1 quota remains undocumented in the reviewed materials.
+
 ## Next validation
-Exercise one OpenF1 session discovery request through a concrete backend adapter, preserving response provenance; then fetch bounded driver/lap/location windows and measure payload sizes, gaps, timestamps, quota behavior and coordinate scaling. No external API runtime calls are part of Phase 1.
+For a selected real session, fetch bounded car-location and lap windows; measure response sizes, gaps, timestamp alignment, access behavior, and coordinate scaling. Build an explicit coverage response before advertising replay availability. No live integration, radio playback, or telemetry display is implemented.

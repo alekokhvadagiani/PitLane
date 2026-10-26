@@ -30,6 +30,10 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Circuit } from '@/features/workspace/circuit'
+import {
+  ReplayLibrary,
+  type ReplaySelection,
+} from '@/features/replay/replay-library'
 import { SessionDialog } from '@/features/workspace/session-dialog'
 import { getCapabilities, type Mode } from '@/lib/api'
 
@@ -82,8 +86,32 @@ const views = new Set<View>([
   'radio',
 ])
 function getView(): View {
-  const value = location.hash.slice(1) as View
+  const value = location.hash.slice(1).split('?')[0] as View
   return views.has(value) ? value : 'overview'
+}
+function getReplaySelection(): ReplaySelection {
+  const parameters = new URLSearchParams(location.hash.split('?')[1] ?? '')
+  const currentYear = new Date().getUTCFullYear()
+  const requestedYear = Number(parameters.get('year'))
+  const year =
+    Number.isInteger(requestedYear) &&
+    requestedYear >= 2023 &&
+    requestedYear <= currentYear
+      ? requestedYear
+      : currentYear
+  const requestedMeeting = Number(parameters.get('meeting'))
+  const meetingKey =
+    Number.isInteger(requestedMeeting) && requestedMeeting > 0
+      ? requestedMeeting
+      : null
+  const requestedSession = Number(parameters.get('session'))
+  const sessionKey =
+    meetingKey !== null &&
+    Number.isInteger(requestedSession) &&
+    requestedSession > 0
+      ? requestedSession
+      : null
+  return { year, meetingKey, sessionKey }
 }
 function subscribe(callback: () => void) {
   window.addEventListener('hashchange', callback)
@@ -93,6 +121,7 @@ function subscribe(callback: () => void) {
 function App() {
   const view = useSyncExternalStore(subscribe, getView)
   const selectedMode = modes.find((mode) => mode.id === view)
+  const replaySelection = getReplaySelection()
   const reducedMotion = useReducedMotion()
   const capabilities = useQuery({
     queryKey: ['capabilities'],
@@ -206,7 +235,11 @@ function App() {
             <SessionDialog compact />
           </div>
 
-          {selectedMode ? (
+          {selectedMode?.id === 'replay' ? (
+            <ReplayLibrary selection={replaySelection} />
+          ) : null}
+
+          {selectedMode && selectedMode.id !== 'replay' ? (
             <section className="mode-empty panel" aria-labelledby="mode-title">
               <selectedMode.icon
                 size={35}

@@ -1,10 +1,19 @@
 using Microsoft.OpenApi;
 using PitLane.Api.Features.Capabilities;
+using PitLane.Api.Features.HistoricalSessions;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton<ICapabilityCatalog, FoundationCapabilityCatalog>();
 builder.Services.AddHealthChecks();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHttpClient<IHistoricalSessionProvider, OpenF1HistoricalSessionProvider>(client =>
+{
+    client.BaseAddress = new Uri("https://api.openf1.org/v1/");
+    client.Timeout = TimeSpan.FromSeconds(12);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("PitLane/0.1");
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -12,7 +21,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "PitLane API",
         Version = "v1",
-        Description = "Personal Formula 1 workspace API. Race data integrations are not implemented yet."
+        Description = "Personal Formula 1 workspace API. Historical meeting and session metadata is available from OpenF1; replay streams are not loaded yet."
     });
 });
 
@@ -30,6 +39,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapHealthChecks("/api/health");
+app.MapHistoricalSessions();
 app.MapGet("/api/capabilities", (ICapabilityCatalog catalog) => TypedResults.Ok(catalog.GetCapabilities()))
     .WithName("GetCapabilities")
     .WithTags("Workspace")

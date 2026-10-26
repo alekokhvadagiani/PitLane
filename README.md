@@ -1,6 +1,6 @@
 # PitLane
 
-A personal Formula 1 pit wall for timing, historical replay, telemetry, and available team radio. This first milestone is a responsive application shell with explicit empty states. **No race provider is integrated yet.** The circuit is an illustration, not recorded track geometry or car positions.
+A personal Formula 1 pit wall for timing, historical replay, telemetry, and available team radio. The app has a responsive shell and a real OpenF1 historical meeting/session catalog in Replay mode. Selecting a session does not imply replay streams are available. The circuit is an illustration, not recorded track geometry or car positions.
 
 ## Run locally
 
@@ -25,13 +25,15 @@ Open **http://127.0.0.1:5173**. API listens at `http://localhost:5050`; Vite pro
 ```sh
 curl http://localhost:5050/api/health
 curl http://localhost:5050/api/capabilities
+curl 'http://localhost:5050/api/meetings?year=2025'
+curl 'http://localhost:5050/api/meetings/1254/sessions'
 ```
 
-The health endpoint checks the process, not upstream providers. Capability metadata reports implementation readiness, not session coverage.
+The health endpoint checks the process, not upstream providers. Capability metadata reports implementation readiness, not session coverage. Historical catalog requests use OpenF1 and are cached in memory for 30 minutes. The catalog does not establish location, timing, telemetry, or radio availability.
 
 ### Swagger
 
-When running with the `http` launch profile (Development), open **http://localhost:5050/swagger** to inspect and call the API. Rider's `PitLane.Api: http` profile opens Swagger automatically. The OpenAPI document is at `/swagger/v1/swagger.json`; it includes the typed capabilities response. `/api/health` remains an operational health endpoint outside the generated API documentation.
+When running with the `http` launch profile (Development), open **http://localhost:5050/swagger** to inspect and call the API. Rider's `PitLane.Api: http` profile opens Swagger automatically. The OpenAPI document is at `/swagger/v1/swagger.json`; it includes capabilities and historical catalog endpoints. `/api/health` remains an operational health endpoint outside the generated API documentation.
 
 Swagger UI and its JSON document are enabled only in Development. The Production Docker Compose setup does not expose Swagger.
 
@@ -57,7 +59,7 @@ npm run build
 npm test
 ```
 
-See [AGENTS.md](AGENTS.md) before development, [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [API evaluation](docs/api-research.md), and [decisions](docs/decisions/0001-foundation.md). The next increment is real historical session selection; replay and live streams remain planned.
+See [AGENTS.md](AGENTS.md) before development, [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [API evaluation](docs/api-research.md), and [decisions](docs/decisions/0001-foundation.md). Replay stream coverage, live timing, telemetry, and radio remain planned.
 
 Browser checks use installed Google Chrome via Playwright (`channel: 'chrome'`), on desktop and mobile viewports. `npm test` starts Vite if needed; capability responses are intercepted with non-race metadata to verify unavailable/retry states deterministically. The running backend is checked separately via the health/capability endpoints. No backend unit-test project exists yet; add behavioral tests with the first provider adapter.
 
