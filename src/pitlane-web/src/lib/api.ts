@@ -52,6 +52,29 @@ export type HistoricalLap = {
   sector2Duration: number | null
   sector3Duration: number | null
   isPitOutLap: boolean | null
+  driverNumber: number
+}
+export type HistoricalStint = {
+  driverNumber: number
+  stintNumber: number
+  compound: string | null
+  lapStart: number | null
+  lapEnd: number | null
+  tyreAgeAtStart: number | null
+}
+export type HistoricalPitStop = {
+  date: string
+  driverNumber: number
+  lapNumber: number | null
+  laneDuration: number | null
+}
+export type HistoricalSessionResult = {
+  driverNumber: number
+  dnf: boolean
+  dns: boolean
+  dsq: boolean
+  position: number | null
+  numberOfLaps: number | null
 }
 export type HistoricalPosition = {
   date: string
@@ -121,6 +144,34 @@ export function getDriverLaps(
   )
 }
 
+export function getSessionLaps(sessionKey: number, signal: AbortSignal) {
+  return getJson<HistoricalCatalog<HistoricalLap>>(
+    `/api/sessions/${sessionKey}/all-laps`,
+    signal,
+  )
+}
+
+export function getSessionStints(sessionKey: number, signal: AbortSignal) {
+  return getJson<HistoricalCatalog<HistoricalStint>>(
+    `/api/sessions/${sessionKey}/stints`,
+    signal,
+  )
+}
+
+export function getSessionPitStops(sessionKey: number, signal: AbortSignal) {
+  return getJson<HistoricalCatalog<HistoricalPitStop>>(
+    `/api/sessions/${sessionKey}/pit-stops`,
+    signal,
+  )
+}
+
+export function getSessionResults(sessionKey: number, signal: AbortSignal) {
+  return getJson<HistoricalCatalog<HistoricalSessionResult>>(
+    `/api/sessions/${sessionKey}/results`,
+    signal,
+  )
+}
+
 export function getDriverPositions(
   sessionKey: number,
   driverNumber: number,
@@ -178,7 +229,8 @@ export function getCarData(
 }
 
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(url, { signal })
+  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+  const response = await fetch(url, { signal: requestSignal })
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
     const problem =

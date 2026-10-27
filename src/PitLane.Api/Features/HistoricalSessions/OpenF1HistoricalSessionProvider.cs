@@ -130,10 +130,79 @@ public sealed class OpenF1HistoricalSessionProvider(
                     item.Sector1Duration,
                     item.Sector2Duration,
                     item.Sector3Duration,
-                    item.IsPitOutLap))
+                    item.IsPitOutLap,
+                    item.DriverNumber))
                 .ToArray();
 
             return new HistoricalCatalog<HistoricalLap>(Source, timeProvider.GetUtcNow(), laps);
+        })!;
+
+    public Task<HistoricalCatalog<HistoricalLap>> GetSessionLapsAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:session-laps:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1Lap>($"laps?session_key={sessionKey}", cancellationToken);
+            var laps = records
+                .Where(item => item.LapNumber > 0 && item.DriverNumber > 0)
+                .OrderBy(item => item.DateStart)
+                .ThenBy(item => item.LapNumber)
+                .Select(item => new HistoricalLap(
+                    item.LapNumber, item.DateStart, item.LapDuration, item.Sector1Duration,
+                    item.Sector2Duration, item.Sector3Duration, item.IsPitOutLap, item.DriverNumber))
+                .ToArray();
+            return new HistoricalCatalog<HistoricalLap>(Source, timeProvider.GetUtcNow(), laps);
+        })!;
+
+    public Task<HistoricalCatalog<HistoricalStint>> GetStintsAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:stints:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1Stint>($"stints?session_key={sessionKey}", cancellationToken);
+            var stints = records
+                .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0)
+                .OrderBy(item => item.DriverNumber)
+                .ThenBy(item => item.StintNumber)
+                .Select(item => new HistoricalStint(item.DriverNumber, item.StintNumber,
+                    item.Compound, item.LapStart, item.LapEnd, item.TyreAgeAtStart))
+                .ToArray();
+            return new HistoricalCatalog<HistoricalStint>(Source, timeProvider.GetUtcNow(), stints);
+        })!;
+
+    public Task<HistoricalCatalog<HistoricalPitStop>> GetPitStopsAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:pit-stops:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1PitStop>($"pit?session_key={sessionKey}", cancellationToken);
+            var stops = records
+                .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0)
+                .OrderBy(item => item.Date)
+                .Select(item => new HistoricalPitStop(item.Date, item.DriverNumber, item.LapNumber, item.LaneDuration))
+                .ToArray();
+            return new HistoricalCatalog<HistoricalPitStop>(Source, timeProvider.GetUtcNow(), stops);
+        })!;
+
+    public Task<HistoricalCatalog<HistoricalSessionResult>> GetSessionResultsAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:session-results:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1SessionResult>($"session_result?session_key={sessionKey}", cancellationToken);
+            var results = records
+                .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0)
+                .GroupBy(item => item.DriverNumber)
+                .Select(group => group.Last())
+                .OrderBy(item => item.DriverNumber)
+                .Select(item => new HistoricalSessionResult(item.DriverNumber, item.Dnf, item.Dns,
+                    item.Dsq, item.Position, item.NumberOfLaps))
+                .ToArray();
+            return new HistoricalCatalog<HistoricalSessionResult>(Source, timeProvider.GetUtcNow(), results);
         })!;
 
     public Task<HistoricalCatalog<HistoricalPositionSample>> GetPositionsAsync(
@@ -333,6 +402,7 @@ public sealed class OpenF1HistoricalSessionProvider(
         [property: JsonPropertyName("team_colour")] string TeamColour);
 
     private sealed record OpenF1Lap(
+        [property: JsonPropertyName("driver_number")] int DriverNumber,
         [property: JsonPropertyName("lap_number")] int LapNumber,
         [property: JsonPropertyName("date_start")] DateTimeOffset? DateStart,
         [property: JsonPropertyName("lap_duration")] double? LapDuration,
@@ -340,6 +410,31 @@ public sealed class OpenF1HistoricalSessionProvider(
         [property: JsonPropertyName("duration_sector_2")] double? Sector2Duration,
         [property: JsonPropertyName("duration_sector_3")] double? Sector3Duration,
         [property: JsonPropertyName("is_pit_out_lap")] bool? IsPitOutLap);
+
+    private sealed record OpenF1Stint(
+        [property: JsonPropertyName("session_key")] int SessionKey,
+        [property: JsonPropertyName("driver_number")] int DriverNumber,
+        [property: JsonPropertyName("stint_number")] int StintNumber,
+        [property: JsonPropertyName("compound")] string? Compound,
+        [property: JsonPropertyName("lap_start")] int? LapStart,
+        [property: JsonPropertyName("lap_end")] int? LapEnd,
+        [property: JsonPropertyName("tyre_age_at_start")] int? TyreAgeAtStart);
+
+    private sealed record OpenF1PitStop(
+        [property: JsonPropertyName("session_key")] int SessionKey,
+        [property: JsonPropertyName("driver_number")] int DriverNumber,
+        [property: JsonPropertyName("date")] DateTimeOffset Date,
+        [property: JsonPropertyName("lap_number")] int? LapNumber,
+        [property: JsonPropertyName("lane_duration")] double? LaneDuration);
+
+    private sealed record OpenF1SessionResult(
+        [property: JsonPropertyName("session_key")] int SessionKey,
+        [property: JsonPropertyName("driver_number")] int DriverNumber,
+        [property: JsonPropertyName("dnf")] bool Dnf,
+        [property: JsonPropertyName("dns")] bool Dns,
+        [property: JsonPropertyName("dsq")] bool Dsq,
+        [property: JsonPropertyName("position")] int? Position,
+        [property: JsonPropertyName("number_of_laps")] int? NumberOfLaps);
 
     private sealed record OpenF1Position(
         [property: JsonPropertyName("session_key")] int SessionKey,

@@ -7,6 +7,10 @@ public interface IHistoricalSessionProvider
     Task<HistoricalCatalog<HistoricalWeatherObservation>> GetWeatherAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalDriver>> GetDriversAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalLap>> GetLapsAsync(int sessionKey, int driverNumber, CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalLap>> GetSessionLapsAsync(int sessionKey, CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalStint>> GetStintsAsync(int sessionKey, CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalPitStop>> GetPitStopsAsync(int sessionKey, CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalSessionResult>> GetSessionResultsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalPositionSample>> GetPositionsAsync(
         int sessionKey,
         int driverNumber,

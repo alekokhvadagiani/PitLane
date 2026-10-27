@@ -144,6 +144,92 @@ public static class HistoricalSessionsEndpoints
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+        group.MapGet("/sessions/{sessionKey:int}/all-laps", async (
+                int sessionKey,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                try
+                {
+                    return Results.Ok(await provider.GetSessionLapsAsync(sessionKey, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Session lap data is temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalSessionLaps")
+            .WithSummary("List timestamped lap data for all session drivers")
+            .Produces<HistoricalCatalog<HistoricalLap>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+        group.MapGet("/sessions/{sessionKey:int}/stints", async (
+                int sessionKey,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                try
+                {
+                    return Results.Ok(await provider.GetStintsAsync(sessionKey, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Session tyre stints are temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalSessionStints")
+            .WithSummary("List tyre compound stints for session drivers")
+            .Produces<HistoricalCatalog<HistoricalStint>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+        group.MapGet("/sessions/{sessionKey:int}/pit-stops", async (
+                int sessionKey,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                try
+                {
+                    return Results.Ok(await provider.GetPitStopsAsync(sessionKey, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Session pit lane records are temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalSessionPitStops")
+            .WithSummary("List recorded pit lane visits")
+            .WithDescription("Returns timestamped pit events and recorded lane duration. OpenF1 does not document whether the event timestamp is lane entry or exit; replay's PIT LANE interval is therefore an estimate.")
+            .Produces<HistoricalCatalog<HistoricalPitStop>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+        group.MapGet("/sessions/{sessionKey:int}/results", async (
+                int sessionKey,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                try
+                {
+                    return Results.Ok(await provider.GetSessionResultsAsync(sessionKey, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Session results are temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalSessionResults")
+            .WithSummary("List final session classifications and retirement flags")
+            .WithDescription("Returns final DNF/DNS/DSQ results where published; these flags are not timestamped retirement events.")
+            .Produces<HistoricalCatalog<HistoricalSessionResult>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         group.MapGet("/sessions/{sessionKey:int}/positions", async (
                 int sessionKey,
                 int driverNumber,

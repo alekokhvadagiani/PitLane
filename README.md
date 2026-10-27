@@ -35,6 +35,12 @@ curl 'http://localhost:5050/api/sessions/9693/positions?driverNumber=1&fromUtc=2
 
 The health endpoint checks the process, not upstream providers. Capability metadata reports implementation readiness, not universal session coverage. Historical catalog, weather, driver, lap, and position-window requests use OpenF1 and are cached in memory for 30 minutes. Position requests require a driver and UTC interval no longer than three minutes. Selected-lap playback shows only returned position data and leaves gaps open; it does not imply all-session replay support.
 
+### Replay cockpit
+
+The selected-car cockpit uses locally bundled Oxanium for instrumentation, Barlow Condensed for labels and navigation, and Barlow for supporting text. Its speed dial, RPM tachometer, pedal segments, gear, brake, DRS state, replay timer, and car position share the replay clock. Speed, RPM, and throttle interpolate between nearby recorded samples; gear, brake, and DRS hold the last recorded state. Missing or stale samples remain unavailable. OpenF1 supplies no per-car redline specification, so the tachometer scale is a display range and does not claim to show an individual car's redline.
+
+Screenshot: [telemetry cockpit](docs/screenshots/telemetry-cockpit.png), captured with a synthetic Playwright fixture rather than race data.
+
 ### Swagger
 
 When running with the `http` launch profile (Development), open **http://localhost:5050/swagger** to inspect and call the API. Rider's `PitLane.Api: http` profile opens Swagger automatically. The OpenAPI document is at `/swagger/v1/swagger.json`; it includes capabilities, historical catalogs, weather, driver/lap data, and bounded position windows. `/api/health` remains an operational health endpoint outside the generated API documentation.
@@ -82,4 +88,4 @@ Apply, reload the solution, and rebuild. These machine-specific paths are exampl
 
 For the backend, choose **PitLane.Api: http** in the run selector. The Dockerfile configuration requires Docker and does not start the frontend. Run `npm run dev` in `src/pitlane-web` separately, then open `http://127.0.0.1:5173`. Backend and frontend are separate processes; the API alone has no homepage.
 
-Unofficial personal project, not affiliated with Formula 1. External data and recordings remain subject to their providers' terms. Fonts are bundled from Fontsource (Manrope and Barlow Condensed, SIL Open Font License); package distributions contain their licenses.
+Unofficial personal project, not affiliated with Formula 1. External data and recordings remain subject to their providers' terms. Fonts are bundled from Fontsource (Oxanium, Barlow, and Barlow Condensed, SIL Open Font License); package distributions contain their licenses.

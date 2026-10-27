@@ -67,6 +67,8 @@ export function ReplayLibrary({ selection }: { selection: ReplaySelection }) {
     queryFn: ({ signal }) => getMeetings(selection.year, signal),
     enabled: browserOpen || selection.meetingKey !== null,
     staleTime: 30 * 60_000,
+    gcTime: 15 * 60_000,
+    refetchOnWindowFocus: false,
     retry: false,
   })
   const meetingKey = selection.meetingKey
@@ -75,6 +77,8 @@ export function ReplayLibrary({ selection }: { selection: ReplaySelection }) {
     queryFn: ({ signal }) => getMeetingSessions(meetingKey!, signal),
     enabled: meetingKey !== null,
     staleTime: 30 * 60_000,
+    gcTime: 15 * 60_000,
+    refetchOnWindowFocus: false,
     retry: false,
   })
   const visibleMeetings = useMemo(() => {

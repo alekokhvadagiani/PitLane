@@ -1,4 +1,11 @@
-@import '@fontsource-variable/manrope';
+@import '@fontsource/oxanium/400.css';
+@import '@fontsource/oxanium/500.css';
+@import '@fontsource/oxanium/600.css';
+@import '@fontsource/oxanium/700.css';
+@import '@fontsource/barlow/400.css';
+@import '@fontsource/barlow/500.css';
+@import '@fontsource/barlow/600.css';
+@import '@fontsource/barlow/700.css';
 @import '@fontsource/barlow-condensed/500.css';
 @import '@fontsource/barlow-condensed/600.css';
 @import '@fontsource/barlow-condensed/700.css';
@@ -13,19 +20,60 @@
   --color-border: #272c34;
   --color-primary: #f04438;
   --color-primary-foreground: #fff;
-  --font-sans: 'Manrope Variable', sans-serif;
-  --font-display: 'Barlow Condensed', sans-serif;
+  --font-sans: 'Barlow', sans-serif;
+  --font-display: 'Oxanium', sans-serif;
+  --font-instrument: 'Oxanium', sans-serif;
+  --font-label: 'Barlow Condensed', sans-serif;
+  --type-xs: 0.75rem;
+  --type-sm: 0.875rem;
+  --type-md: 1rem;
+  --type-lg: 1.25rem;
+  --type-xl: 1.75rem;
+  --type-display: clamp(2.25rem, 4vw, 3.5rem);
   --radius: 0.625rem;
 }
 
 :root {
   font-family: var(--font-sans);
+  font-size: 15px;
   color: var(--color-foreground);
   background: var(--color-background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
+}
+body,
+input,
+select,
+textarea {
+  font-family: var(--font-sans);
+  font-size: var(--type-md);
+  line-height: 1.45;
+}
+button,
+.nav-link,
+.instrument-heading,
+.sidebar-label,
+.race-tower-heading,
+.race-driver-acronym,
+.telemetry-session-state,
+.telemetry-lap-line,
+.telemetry-value > span,
+.race-speed,
+.race-seek-label > span {
+  font-family: var(--font-label);
+  letter-spacing: 0.035em;
+}
+.brand,
+h1,
+h2,
+h3,
+.telemetry-driver strong,
+.telemetry-primary strong,
+.race-transport-clock strong {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
 }
 * {
   box-sizing: border-box;
@@ -1512,7 +1560,7 @@ h1 {
 }
 .telemetry-primary i {
   color: #929aa5;
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-sans);
   font-size: 9px;
   font-style: normal;
   font-weight: 400;
@@ -2742,7 +2790,7 @@ body {
 .mode-page-title > i {
   margin-left: auto;
   color: #8c949f;
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-sans);
   font-size: 8px;
   font-style: normal;
   letter-spacing: 0.08em;
@@ -3547,7 +3595,7 @@ body {
 }
 .gauge-speed-unit {
   fill: #a7afb9;
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-sans);
   font-size: 9px;
   text-anchor: middle;
   letter-spacing: 0.13em;
@@ -3561,7 +3609,7 @@ body {
 }
 .gauge-rpm-label {
   fill: #858e99;
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-sans);
   font-size: 8px;
   text-anchor: middle;
   letter-spacing: 0.12em;
@@ -3767,6 +3815,15 @@ body {
   height: 11px;
   background: var(--pit-yellow);
 }
+.pit-stop-event-marker {
+  position: absolute;
+  z-index: 2;
+  top: -4px;
+  width: 3px;
+  height: 13px;
+  background: #ffc45f;
+  box-shadow: 0 0 5px rgba(255, 196, 95, 0.5);
+}
 .race-event-cursor {
   position: absolute;
   top: -4px;
@@ -3796,6 +3853,9 @@ body {
 .race-event-legend .event-pit {
   background: var(--pit-yellow);
 }
+.race-event-legend .event-pit-stop {
+  background: #ffc45f;
+}
 .race-coverage {
   grid-area: coverage;
   justify-self: end;
@@ -3803,6 +3863,503 @@ body {
   color: #818a95;
   font-size: 8px;
   text-align: right;
+}
+.race-control-deck {
+  position: relative;
+  display: grid;
+  gap: 15px;
+  padding: 15px 20px 12px;
+  overflow: visible;
+  color: #eef1f4;
+  background:
+    linear-gradient(110deg, rgba(225, 6, 0, 0.07), transparent 28%),
+    linear-gradient(180deg, #171b20 0%, #101317 100%);
+  border-top: 1px solid #39414b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 -10px 28px rgba(0, 0, 0, 0.18);
+}
+.race-control-deck::before {
+  position: absolute;
+  top: -1px;
+  left: 20px;
+  width: min(22%, 240px);
+  height: 2px;
+  content: '';
+  background: linear-gradient(90deg, #ff3a37, rgba(255, 58, 55, 0));
+  box-shadow: 0 0 12px rgba(244, 30, 38, 0.35);
+}
+.race-deck-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.race-deck-timing {
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 3vw, 42px);
+  min-width: 0;
+}
+.race-deck-time-main {
+  display: grid;
+  gap: 1px;
+  min-width: 164px;
+}
+.race-deck-kicker,
+.race-deck-time-meta > span,
+.race-speed-control > span {
+  color: #8f99a5;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+}
+.race-deck-time-main strong {
+  color: #f6f7f8;
+  font-family: 'Oxanium', sans-serif;
+  font-size: clamp(20px, 2vw, 28px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.1);
+}
+.race-deck-time-meta {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 2vw, 25px);
+  min-width: 0;
+}
+.race-deck-time-meta > span {
+  display: grid;
+  gap: 3px;
+  white-space: nowrap;
+}
+.race-deck-time-meta b {
+  color: #dce1e6;
+  font-family: 'Oxanium', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.race-deck-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  background: linear-gradient(180deg, #0d1013, #15191e);
+  border: 1px solid #343b44;
+  border-radius: 7px;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.045),
+    0 5px 14px rgba(0, 0, 0, 0.24);
+}
+.race-deck-controls .button {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  color: #c1c8d0;
+  background: linear-gradient(180deg, #242a31, #191e24);
+  border: 1px solid #414a55;
+  border-radius: 5px;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+.race-deck-controls .button:hover:not(:disabled) {
+  color: #fff;
+  background: linear-gradient(180deg, #343b44, #222830);
+  border-color: #717b88;
+}
+.race-deck-controls .button:focus-visible,
+.race-speed-control select:focus-visible,
+.race-lap-jump-control select:focus-visible,
+.race-timeline-scrubber:focus-visible,
+.race-timeline-event:focus-visible,
+.race-timeline-cluster-trigger:focus-visible,
+.race-timeline-menu-item:focus-visible {
+  outline: 2px solid #ff625e;
+  outline-offset: 3px;
+}
+.race-deck-controls .race-skip-control {
+  width: 43px;
+}
+.race-skip-control span {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  color: #e3e7eb;
+  font-family: 'Oxanium', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+}
+.race-deck-controls .race-play-control {
+  width: 49px;
+  height: 46px;
+  color: #fff;
+  background: linear-gradient(145deg, #ff423d, #bd1019 76%);
+  border-color: #ff615c;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.22),
+    0 0 16px rgba(230, 25, 31, 0.26);
+  clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
+}
+.race-deck-controls .race-play-control:hover:not(:disabled) {
+  background: linear-gradient(145deg, #ff625d, #dc1720 76%);
+  border-color: #ff817c;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.3),
+    0 0 22px rgba(230, 25, 31, 0.42);
+}
+.race-speed-control {
+  display: grid;
+  gap: 3px;
+  margin-left: 5px;
+}
+.race-speed-control select {
+  min-width: 74px;
+  height: 30px;
+  padding: 0 23px 0 9px;
+  color: #fff;
+  background-color: #222830;
+  border: 1px solid #48515d;
+  border-radius: 4px;
+  font-family: 'Oxanium', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.race-lap-jump-control {
+  display: grid;
+  gap: 3px;
+  margin-left: 4px;
+}
+.race-lap-jump-control > span {
+  color: #8f99a5;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+}
+.race-lap-jump-control select {
+  min-width: 92px;
+  height: 30px;
+  padding: 0 20px 0 8px;
+  color: #eef1f4;
+  background: linear-gradient(180deg, #252b33, #1a1f25);
+  border: 1px solid #48515d;
+  border-radius: 4px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.race-lap-jump-control select:disabled {
+  color: #77818c;
+  opacity: 0.85;
+}
+.race-timeline-area {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.race-timeline-labels,
+.race-timeline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #75808b;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+.race-timeline-rail {
+  position: relative;
+  height: 34px;
+  isolation: isolate;
+}
+.race-timeline-base,
+.race-timeline-progress {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.race-timeline-base {
+  right: 0;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 5px,
+      rgba(5, 7, 9, 0.7) 5px,
+      rgba(5, 7, 9, 0.7) 7px
+    ),
+    linear-gradient(180deg, #414953, #293039);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.9),
+    0 1px rgba(255, 255, 255, 0.06);
+}
+.race-timeline-progress {
+  z-index: 1;
+  width: 0;
+  background: linear-gradient(180deg, #ff514c, #c80f19);
+  box-shadow:
+    0 0 9px rgba(240, 30, 35, 0.48),
+    inset 0 1px rgba(255, 255, 255, 0.25);
+}
+.race-timeline-playhead {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 25px;
+  background: #f7f8f9;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 2px rgba(240, 40, 43, 0.72),
+    0 0 11px rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  transform: translate(-1px, -50%);
+}
+.race-timeline-events {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  pointer-events: none;
+}
+.race-timeline-event,
+.race-timeline-cluster-trigger {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #17191c;
+  background: #d9e0e6;
+  border: 1px solid #f1f4f6;
+  border-radius: 4px 4px 6px 6px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.race-timeline-event::before {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 2px;
+  height: 5px;
+  content: '';
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.race-timeline-event.lap {
+  color: #11161b;
+  background: linear-gradient(180deg, #f1f4f6, #aab5bf);
+  border-color: #e8edf1;
+}
+.race-timeline-event.pit-entry,
+.race-timeline-menu-item.pit-entry {
+  color: #19140a;
+  background: linear-gradient(180deg, #ffd375, #d7982d);
+  border-color: #ffdc91;
+}
+.race-timeline-event.pit-exit,
+.race-timeline-menu-item.pit-exit {
+  color: #07150f;
+  background: linear-gradient(180deg, #7af1ad, #2fa66c);
+  border-color: #9af9bf;
+}
+.race-timeline-event.pit-stop,
+.race-timeline-menu-item.pit-stop {
+  color: #1b1208;
+  background: linear-gradient(180deg, #ffc476, #dc7726);
+  border-color: #ffd39b;
+}
+.race-timeline-cluster {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.race-timeline-cluster-trigger {
+  position: relative;
+  top: auto;
+  left: auto;
+  color: #fff;
+  background: linear-gradient(180deg, #303943, #1b2128);
+  border-color: #a3adb8;
+  border-radius: 50%;
+  font-family: 'Oxanium', sans-serif;
+  font-size: 10px;
+  transform: none;
+}
+.race-timeline-event-menu {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  width: min(300px, calc(100vw - 40px));
+  max-height: 260px;
+  overflow: auto;
+  padding: 5px;
+  background: #101419;
+  border: 1px solid #4a535e;
+  border-radius: 6px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7);
+  transform: translateX(-50%);
+}
+.race-timeline-menu-item {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 7px 9px;
+  color: #e9edf1;
+  background: #1b2128;
+  border: 0;
+  border-bottom: 1px solid #303741;
+  text-align: left;
+  cursor: pointer;
+}
+.race-timeline-menu-item:last-child {
+  border-bottom: 0;
+}
+.race-timeline-menu-item > span {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.race-timeline-menu-item small {
+  color: #aab3bd;
+  font-size: 10px;
+}
+.race-timeline-foot {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+.race-timeline-foot span:nth-child(2) {
+  color: #aeb7c1;
+}
+.race-timeline-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 15px;
+  padding-top: 2px;
+  color: #a0a9b3;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.race-timeline-key > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.race-timeline-key i {
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(180deg, #f1f4f6, #aab5bf);
+  border: 1px solid #e8edf1;
+  border-radius: 2px;
+}
+.race-timeline-key .pit-entry i {
+  background: linear-gradient(180deg, #ffd375, #d7982d);
+  border-color: #ffdc91;
+}
+.race-timeline-key .pit-exit i {
+  background: linear-gradient(180deg, #7af1ad, #2fa66c);
+  border-color: #9af9bf;
+}
+.race-timeline-key .pit-stop i {
+  background: linear-gradient(180deg, #ffc476, #dc7726);
+  border-color: #ffd39b;
+}
+.race-timeline-scrubber {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+}
+.race-timeline-scrubber::-webkit-slider-runnable-track {
+  height: 34px;
+  background: transparent;
+}
+.race-timeline-scrubber::-moz-range-track {
+  height: 34px;
+  background: transparent;
+}
+.race-timeline-scrubber::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: 7px;
+  appearance: none;
+  background: #f6f7f8;
+  border: 4px solid #db1b22;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px #f4f5f6,
+    0 0 12px rgba(255, 255, 255, 0.55);
+  cursor: grab;
+}
+.race-timeline-scrubber:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  background: #fff;
+  box-shadow:
+    0 0 0 3px #ff3637,
+    0 0 18px rgba(255, 55, 55, 0.8);
+}
+.race-timeline-scrubber::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  background: #f6f7f8;
+  border: 4px solid #db1b22;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px #f4f5f6,
+    0 0 12px rgba(255, 255, 255, 0.55);
+  cursor: grab;
+}
+.race-timeline-notice {
+  margin: -5px 0 0;
+  color: #d0a8a6;
+  font-size: 11px;
 }
 .pitlane-shell .race-status-tag {
   color: #aeb6c0;
@@ -4188,6 +4745,1373 @@ body {
     padding-inline: 15px;
   }
 }
+
+/* Replay cockpit: track surface, race tower, staged loading and synced instruments. */
+.pitlane-shell .race-replay {
+  background: #090b0f;
+  border: 1px solid #363b43;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+}
+.pitlane-shell .race-replay-heading {
+  min-height: 62px;
+  padding: 10px 16px;
+  background: linear-gradient(105deg, #181c22 0%, #111419 58%, #1b1d20 100%);
+}
+.pitlane-shell .race-replay-title {
+  min-width: 0;
+}
+.pitlane-shell .race-replay-heading h2 {
+  font-size: 24px;
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+}
+.pitlane-shell .race-replay-heading p {
+  margin-top: 5px;
+  font-size: 10px;
+}
+.pitlane-shell .replay-live-state {
+  color: #e2e5e8;
+}
+.pitlane-shell .replay-live-state i {
+  background: #e10600;
+  box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.17);
+}
+.pitlane-shell .replay-progress-strip {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 2.6vw, 35px);
+  padding: 5px 15px;
+  background: #11151a;
+  border-bottom: 1px solid #2c323a;
+}
+.load-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #919aa5;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.load-stage i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #656e78;
+}
+.load-stage b {
+  margin-left: 2px;
+  color: #cbd0d5;
+  font-size: 8px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.load-stage.ready i {
+  background: #42d77d;
+  box-shadow: 0 0 9px rgba(66, 215, 125, 0.4);
+}
+.load-stage.loading i {
+  background: #f2bb45;
+  animation: load-pulse 1.2s ease-in-out infinite;
+}
+.load-stage.failed i {
+  background: #e3454d;
+}
+.load-stage.empty i {
+  background: #7c858f;
+}
+.load-progress-value {
+  margin-left: auto;
+  color: #fff;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+@keyframes load-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pitlane-shell .race-replay-workspace {
+  height: min(88vh, 980px);
+  min-height: 650px;
+  grid-template-columns: 212px minmax(0, 1fr) minmax(440px, 30vw);
+  background: #0d1014;
+}
+.pitlane-shell .race-tower {
+  padding: 10px 0 12px;
+  background: linear-gradient(180deg, #11151b, #0c0f13 72%);
+}
+.tower-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 29px;
+  padding: 0 12px;
+  color: #aab2bc;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+.tower-title strong {
+  color: #f2f4f6;
+  font:
+    600 21px/1 'Barlow Condensed',
+    sans-serif;
+}
+.pitlane-shell .race-tower-heading {
+  min-height: 25px;
+  grid-template-columns: 25px 36px 25px minmax(0, 1fr) 28px;
+  gap: 4px;
+  padding: 5px 10px;
+  color: #89929d;
+  border-color: #30353c;
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+.pitlane-shell .race-driver-row {
+  min-height: 35px;
+  grid-template-columns: 25px 36px 25px minmax(0, 1fr) 28px;
+  gap: 4px;
+  padding: 2px 10px;
+  border-left-width: 3px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  transition: background-color 120ms ease;
+}
+.pitlane-shell .race-driver-row:nth-child(odd) {
+  background-color: rgba(255, 255, 255, 0.018);
+}
+.pitlane-shell .race-driver-row.selected {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--driver-color) 17%, #171b21),
+    #191d23
+  );
+}
+.pitlane-shell .race-driver-position {
+  color: #edf0f2;
+  font:
+    600 17px/1 'Barlow Condensed',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .race-driver-acronym {
+  padding-left: 8px;
+  border-left: 3px solid var(--driver-color);
+  font:
+    650 15px/1 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.04em;
+}
+.pitlane-shell .race-driver-tyre {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  justify-self: center;
+  color: #f8fafb;
+  background: #59616d;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  font:
+    700 11px/1 'Barlow Condensed',
+    sans-serif;
+}
+.pitlane-shell .race-driver-tyre[data-compound='SOFT'] {
+  background: #e23c38;
+}
+.pitlane-shell .race-driver-tyre[data-compound='MEDIUM'] {
+  background: #e0b634;
+  color: #171717;
+}
+.pitlane-shell .race-driver-tyre[data-compound='HARD'] {
+  background: #e8ebee;
+  color: #171717;
+}
+.pitlane-shell .race-driver-tyre[data-compound='INTERMEDIATE'] {
+  background: #36a876;
+}
+.pitlane-shell .race-driver-tyre[data-compound='WET'] {
+  background: #3981de;
+}
+.pitlane-shell .race-driver-status,
+.pitlane-shell .race-driver-result {
+  overflow: hidden;
+  color: #acb4bd;
+  font:
+    700 8px/1 'Barlow Condensed',
+    sans-serif;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.pitlane-shell .race-driver-status[data-status='on-track'] {
+  color: #71d69b;
+}
+.pitlane-shell .race-driver-status[data-status='pit-stop'] {
+  color: #f4bd58;
+}
+.pitlane-shell .race-driver-status[data-status='no-data'] {
+  color: #86909c;
+}
+.pitlane-shell .race-driver-status[data-status='loading'] {
+  color: #8e98a4;
+}
+.pitlane-shell .race-driver-status[data-status='dns'],
+.pitlane-shell .race-driver-status[data-status='dnf'],
+.pitlane-shell .race-driver-status[data-status='dsq'] {
+  color: #ff7770;
+}
+.pitlane-shell .race-driver-result {
+  color: #f17b73;
+  text-align: right;
+}
+.pitlane-shell .telemetry-session-state {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0 10px 7px;
+  padding: 6px 0;
+  color: #9099a5;
+  border-bottom: 1px solid #303640;
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+}
+.pitlane-shell .telemetry-session-state b {
+  color: #e7e9ec;
+  font-size: 9px;
+  letter-spacing: 0;
+}
+.pitlane-shell .telemetry-session-state b:first-child {
+  color: #79d99f;
+}
+.pitlane-shell .telemetry-session-state b:first-child[data-status='dns'],
+.pitlane-shell .telemetry-session-state b:first-child[data-status='dnf'],
+.pitlane-shell .telemetry-session-state b:first-child[data-status='dsq'] {
+  color: #ff7770;
+}
+.pitlane-shell .telemetry-session-state b:first-child[data-status='pit-stop'] {
+  color: #f4bd58;
+}
+.pitlane-shell .race-track-panel {
+  min-height: 0;
+  padding: 12px 15px 10px;
+  background: radial-gradient(
+    ellipse at 51% 47%,
+    #20242a 0%,
+    #15181d 42%,
+    #101216 78%
+  );
+}
+.pitlane-shell .race-track-topline {
+  min-height: 21px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e0e4e7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.race-track-topline > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.race-track-topline > div b {
+  margin-left: 3px;
+  color: #777f89;
+  font-size: 8px;
+  font-weight: 650;
+}
+.race-track-topline > span {
+  color: #8d96a0;
+  font:
+    600 11px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.06em;
+}
+.circuit-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e10600;
+  box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.17);
+}
+.pitlane-shell .race-track-map {
+  width: 100%;
+  height: 100%;
+  min-height: 410px;
+  max-height: none;
+  flex: 1;
+  margin: 4px 0 0;
+  overflow: hidden;
+}
+.track-layers {
+  pointer-events: none;
+}
+.track-shadow {
+  fill: none;
+  stroke: #000;
+  stroke-width: 25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.58;
+  filter: url(#trackShadow);
+}
+.track-kerb {
+  fill: none;
+  stroke: url(#kerbPattern);
+  stroke-width: 19;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.pitlane-shell .race-track-line {
+  fill: none;
+  stroke: url(#roadGradient);
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 1;
+}
+.track-centerline {
+  fill: none;
+  stroke: #92979d;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 8;
+  stroke-linecap: round;
+  opacity: 0.72;
+}
+.track-window-start circle {
+  fill: #f0f1f2;
+  stroke: #0d1014;
+  stroke-width: 4;
+}
+.track-window-start path {
+  fill: url(#kerbPattern);
+  stroke: #15181d;
+  stroke-width: 0.6;
+}
+.race-car-marker {
+  cursor: pointer;
+  outline: none;
+}
+.race-car-marker:focus-visible .race-car-ring {
+  opacity: 1 !important;
+  stroke: white;
+  stroke-width: 2.5;
+}
+.pitlane-shell .race-car-dot {
+  stroke: #f7f8f9;
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
+}
+.pitlane-shell .race-car-ring {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.7));
+}
+.race-car-label-group {
+  pointer-events: none;
+}
+.race-car-label-group rect {
+  fill: rgba(7, 9, 12, 0.94);
+  stroke: rgba(240, 243, 246, 0.25);
+  stroke-width: 0.8;
+}
+.race-car-label-group text {
+  fill: #f6f7f8;
+  font:
+    750 12px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.08em;
+  paint-order: stroke;
+  stroke: #080a0d;
+  stroke-width: 1px;
+}
+.race-car-label-group.selected rect {
+  fill: #f2f4f6;
+  stroke: #fff;
+  stroke-width: 1.2;
+}
+.race-car-label-group.selected text {
+  fill: #090b0e;
+  stroke: #f2f4f6;
+}
+.race-pit-indicator {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
+}
+.race-pit-indicator rect {
+  fill: #4d3511;
+  stroke: #f4bd58;
+  stroke-width: 1.5;
+}
+.race-pit-indicator text {
+  fill: #ffe1a0;
+  font:
+    800 10px/1 'Barlow Condensed',
+    sans-serif;
+  text-anchor: middle;
+}
+.label-leader {
+  stroke: rgba(229, 233, 237, 0.62);
+  stroke-width: 1;
+}
+.circuit-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  color: #737c86;
+  font-size: 8px;
+  letter-spacing: 0.07em;
+}
+.track-state {
+  position: absolute;
+  inset: 46px 15px 31px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 20px;
+  background: rgba(11, 14, 18, 0.88);
+  text-align: center;
+}
+.track-state > svg:not(.f1-tire) {
+  color: #d6dce2;
+}
+.track-state strong {
+  color: #f3f5f6;
+  font:
+    600 23px 'Barlow Condensed',
+    sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.track-state > span {
+  max-width: 340px;
+  color: #a2abb5;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.track-error {
+  background: rgba(17, 13, 15, 0.94);
+}
+.track-error > svg {
+  color: #ed5b60;
+}
+.track-error .button {
+  margin-top: 5px;
+}
+
+.pitlane-shell .telemetry-rail {
+  padding: 13px 14px;
+  background: linear-gradient(180deg, #171b22, #101319 67%);
+}
+.pitlane-shell .telemetry-driver {
+  min-height: 48px;
+  align-items: center;
+}
+.pitlane-shell .telemetry-driver > span {
+  width: 5px;
+  height: 37px;
+  box-shadow: 0 0 10px color-mix(in srgb, currentColor 30%, transparent);
+}
+.pitlane-shell .telemetry-driver > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 6px;
+  align-items: baseline;
+}
+.pitlane-shell .telemetry-driver small {
+  grid-column: 1 / -1;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+.pitlane-shell .telemetry-driver strong {
+  overflow: hidden;
+  font:
+    650 22px/0.95 'Barlow Condensed',
+    sans-serif;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pitlane-shell .telemetry-driver em {
+  color: #a4adb7;
+  font:
+    600 11px 'Barlow Condensed',
+    sans-serif;
+  font-style: normal;
+}
+.speed-instrument {
+  margin-top: 7px;
+  padding: 5px 0 8px;
+  background: radial-gradient(
+    ellipse at center,
+    #242a32 0%,
+    #151a20 63%,
+    transparent 64%
+  );
+}
+.instrument-heading {
+  display: flex;
+  justify-content: space-between;
+  color: #9ca6b1;
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+.instrument-heading b {
+  color: #6fdb9c;
+  font-size: 7px;
+}
+.speed-instrument svg {
+  width: min(100%, 270px);
+}
+.speed-instrument circle {
+  stroke-width: 10;
+}
+.speed-instrument .gauge-rail {
+  stroke: #414852;
+}
+.speed-instrument .gauge-speed {
+  stroke: #e10600;
+  filter: drop-shadow(0 0 5px rgba(225, 6, 0, 0.35));
+  transition: none;
+}
+.speed-instrument .gauge-throttle-rail {
+  stroke: #34403d;
+  stroke-width: 8;
+}
+.speed-instrument .gauge-throttle {
+  stroke: #13c85a;
+  stroke-width: 8;
+  transition: none;
+}
+.gauge-speed-number {
+  font-size: 53px;
+  font-weight: 650;
+}
+.gauge-speed-unit {
+  font-size: 10px;
+  fill: #c1c6cc;
+}
+.gauge-rpm-number {
+  font-size: 21px;
+  font-weight: 650;
+}
+.gauge-rpm-label {
+  font-size: 8px;
+}
+.gauge-arc-label {
+  fill: #f3f4f5;
+  font:
+    700 9px var(--font-sans),
+    sans-serif;
+  letter-spacing: 0.13em;
+}
+.throttle-label {
+  fill: #49e184;
+}
+.gauge-readout-row {
+  margin-top: 0;
+}
+.gauge-readout-row b {
+  font:
+    600 8px var(--font-sans),
+    sans-serif;
+  color: #929ba5;
+}
+.gauge-bottom-row {
+  gap: 5px;
+  margin-top: 8px;
+}
+.gear-readout,
+.brake-readout {
+  color: #a9b1bb;
+  font-size: 8px;
+  font-weight: 700;
+}
+.gear-readout b {
+  font-size: 25px;
+}
+.brake-readout b {
+  margin-left: 3px;
+  color: #f06a70;
+  font:
+    700 10px 'Barlow Condensed',
+    sans-serif;
+}
+.drs-readout {
+  padding: 5px 7px;
+  font-size: 8px;
+}
+.drs-readout b {
+  margin-left: 3px;
+}
+
+/* Racing instrument: one speed dial, an independent engine tachometer,
+   and separated pedal/gear controls on the shared replay clock. */
+.pitlane-shell .telemetry-rail {
+  padding: 15px 16px 18px;
+  background:
+    linear-gradient(145deg, rgba(26, 32, 40, 0.45), transparent 34%),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 23px,
+      rgba(132, 151, 171, 0.025) 24px
+    ),
+    #0a0d11;
+}
+.pitlane-shell .telemetry-driver {
+  position: relative;
+  min-height: 68px;
+  gap: 13px;
+  padding: 4px 0 12px;
+  border-bottom-color: #303943;
+}
+.pitlane-shell .telemetry-driver > span {
+  width: 4px;
+  height: 52px;
+  box-shadow: 0 0 12px currentColor;
+}
+.pitlane-shell .telemetry-driver div {
+  position: relative;
+  min-width: 0;
+  padding-right: 36px;
+}
+.pitlane-shell .telemetry-driver small {
+  font: 600 12px/1.2 var(--font-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.pitlane-shell .telemetry-driver strong {
+  margin-top: 2px;
+  font: 700 clamp(20px, 1.7vw, 25px)/1.02 var(--font-display);
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+.pitlane-shell .telemetry-driver em {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  color: #aeb8c4;
+  font: 700 16px/1 var(--font-label);
+  font-style: normal;
+}
+.pitlane-shell .telemetry-session-state {
+  display: flex;
+  gap: 0;
+  margin-top: 11px;
+  border-bottom: 1px solid #303943;
+}
+.pitlane-shell .telemetry-session-state > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 10px 10px 0;
+  color: #a0aab6;
+  font: 600 11px/1.2 var(--font-label);
+  letter-spacing: 0.11em;
+}
+.pitlane-shell .telemetry-session-state > span + span {
+  padding-left: 13px;
+  border-left: 1px solid #303943;
+}
+.pitlane-shell .telemetry-session-state b {
+  overflow: hidden;
+  color: #edf0f3;
+  font: 700 18px/1.1 var(--font-label);
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.05;
+}
+.pitlane-shell .speed-instrument {
+  margin-top: 3px;
+  padding: 0 0 2px;
+}
+.pitlane-shell .speed-instrument .instrument-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 1px 1px;
+  color: #b9c2cd;
+  font: 700 11px/1.2 var(--font-label);
+  letter-spacing: 0.13em;
+}
+.pitlane-shell .instrument-heading b {
+  color: #42e995;
+  font: 700 10px/1.2 var(--font-label);
+}
+.pitlane-shell .speed-instrument svg {
+  width: min(100%, 480px);
+  margin-top: -2px;
+}
+.pitlane-shell .speed-instrument circle {
+  stroke-width: 1;
+}
+.pitlane-shell .speed-instrument .gauge-face {
+  fill: url(#instrument-face);
+  stroke: #141a21;
+  stroke-width: 2;
+}
+.pitlane-shell .speed-instrument .gauge-bezel {
+  fill: none;
+  stroke: #8593a2;
+  stroke-width: 1.2;
+  opacity: 0.78;
+}
+.pitlane-shell .speed-instrument .gauge-rail {
+  fill: none;
+  stroke: #38424d;
+  stroke-width: 14;
+}
+.pitlane-shell .speed-instrument circle.gauge-rail:first-of-type {
+  stroke: #95a3b2;
+  stroke-width: 1.6;
+  opacity: 0.8;
+}
+.pitlane-shell .speed-instrument .gauge-speed {
+  fill: none;
+  stroke: #f21826;
+  stroke-width: 14;
+  filter: url(#speed-glow);
+  stroke-linecap: butt;
+  transition: none;
+}
+.pitlane-shell .gauge-tick {
+  stroke: #8995a1;
+  stroke-width: 1.5;
+  opacity: 0.82;
+}
+.pitlane-shell .gauge-tick.major {
+  stroke: #e4e8ec;
+  stroke-width: 2.7;
+  opacity: 1;
+}
+.pitlane-shell .gauge-scale-label {
+  fill: #e6ebef;
+  font: 600 14px var(--font-label);
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .gauge-needle {
+  stroke: #f7fafc;
+  stroke-width: 3.4;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.75));
+}
+.pitlane-shell .gauge-hub {
+  fill: #e8edf2;
+  stroke: #27313b;
+  stroke-width: 3;
+}
+.pitlane-shell .gauge-rpm-rail,
+.pitlane-shell .gauge-rpm-arc {
+  fill: none;
+  stroke-width: 6;
+}
+.pitlane-shell .gauge-rpm-rail {
+  stroke: #414b57;
+}
+.pitlane-shell .gauge-rpm-arc {
+  stroke: #f04438;
+  filter: drop-shadow(0 0 4px rgba(240, 68, 56, 0.4));
+}
+.pitlane-shell .rpm-tick {
+  stroke: #84909c;
+  stroke-width: 1;
+}
+.pitlane-shell .rpm-tick.major {
+  stroke: #d0d8df;
+  stroke-width: 1.6;
+}
+.pitlane-shell .rpm-scale-label {
+  fill: #abb6c1;
+  font: 600 7px var(--font-label);
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .gauge-inner-face {
+  fill: #0a0d11;
+  stroke: #26313c;
+  stroke-width: 1.2;
+}
+.pitlane-shell .gauge-speed-number {
+  fill: #fff;
+  font: 700 77px/1 var(--font-instrument);
+  letter-spacing: -0.055em;
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .gauge-speed-unit {
+  fill: #aab5c1;
+  font: 600 14px var(--font-label);
+  letter-spacing: 0.14em;
+  text-anchor: middle;
+}
+.pitlane-shell .gauge-rpm-number {
+  fill: #f3f5f7;
+  font: 700 27px var(--font-instrument);
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+.pitlane-shell .gauge-rpm-label,
+.pitlane-shell .gauge-center-caption {
+  fill: #97a3b0;
+  font: 600 10px var(--font-label);
+  letter-spacing: 0.14em;
+  text-anchor: middle;
+}
+.pitlane-shell .gauge-arc-label {
+  fill: #d1d8df;
+  font: 700 11px var(--font-label);
+  letter-spacing: 0.16em;
+  text-anchor: middle;
+}
+.pitlane-shell .gauge-bottom-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  margin: -4px 0 0;
+}
+.pitlane-shell .pedal-gauge {
+  min-width: 0;
+}
+.pitlane-shell .pedal-segments {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 3px;
+  height: 24px;
+  transform: skew(-11deg);
+}
+.pitlane-shell .pedal-segments span {
+  border: 1px solid #333d48;
+  background: #1b222a;
+}
+.pitlane-shell .throttle-gauge .pedal-segments span[data-active] {
+  border-color: #09e783;
+  background: linear-gradient(180deg, #49ffac, #00b963);
+  box-shadow: 0 0 7px rgba(0, 224, 125, 0.16);
+}
+.pitlane-shell .brake-gauge .pedal-segments span[data-active] {
+  border-color: #ff3340;
+  background: linear-gradient(180deg, #ff5060, #d80019);
+  box-shadow: 0 0 7px rgba(240, 24, 38, 0.2);
+}
+.pitlane-shell .pedal-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 7px;
+  font: 700 13px/1.1 var(--font-label);
+  letter-spacing: 0.08em;
+}
+.pitlane-shell .throttle-gauge .pedal-label {
+  color: #37e891;
+}
+.pitlane-shell .brake-gauge .pedal-label {
+  color: #f04450;
+}
+.pitlane-shell .pedal-label b {
+  color: #edf1f4;
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .pedal-gauge small {
+  display: block;
+  margin-top: 4px;
+  color: #8994a0;
+  font: 600 9px/1 var(--font-label);
+  letter-spacing: 0.1em;
+}
+.pitlane-shell .gear-plinth {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 68px;
+  background: linear-gradient(145deg, #141b23, #080b0f);
+  border: 1px solid #53606d;
+  clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+}
+.pitlane-shell .gear-plinth span {
+  color: #aeb8c3;
+  font: 600 10px/1 var(--font-label);
+  letter-spacing: 0.1em;
+}
+.pitlane-shell .gear-plinth b {
+  color: #fff;
+  font: 700 43px/0.95 var(--font-instrument);
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .drs-readout {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 9px;
+  width: min(74%, 250px);
+  margin: 12px auto 0;
+  padding: 8px 16px;
+  color: #aeb8c3;
+  background: #161c22;
+  border: 1px solid #48525d;
+  clip-path: polygon(9% 0, 91% 0, 100% 50%, 91% 100%, 9% 100%, 0 50%);
+  font: 700 14px/1 var(--font-label);
+  letter-spacing: 0.12em;
+}
+.pitlane-shell .drs-readout b {
+  margin: 0;
+  font: 700 15px/1 var(--font-display);
+}
+.pitlane-shell .drs-readout[data-state='active'] {
+  color: #062212;
+  background: #13e982;
+  border-color: #6dffb2;
+  box-shadow: 0 0 18px rgba(19, 233, 130, 0.28);
+}
+.pitlane-shell .drs-readout[data-state='inactive'] {
+  color: #c1c9d1;
+}
+.pitlane-shell .drs-readout[data-state='unavailable'] {
+  color: #909aa5;
+}
+.pitlane-shell .telemetry-lap-line {
+  margin-top: 12px;
+  padding: 10px 0;
+  border-color: #303943;
+  font: 600 13px/1.2 var(--font-label);
+  letter-spacing: 0.05em;
+}
+.pitlane-shell .telemetry-lap-line strong {
+  font: 700 19px/1 var(--font-instrument);
+  font-variant-numeric: tabular-nums;
+}
+.pit-stop-log {
+  margin: 5px 0 7px;
+  padding: 8px 0;
+  border-bottom: 1px solid #303943;
+}
+.pit-stop-log-heading,
+.pit-stop-main,
+.pit-stop-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+.pit-stop-log-heading strong {
+  color: #c3cad2;
+  font: 700 11px/1 var(--font-label);
+  letter-spacing: 0.08em;
+}
+.pit-stop-log-heading > span,
+.pit-stop-log > small,
+.pit-stop-meta {
+  color: #87919c;
+  font: 600 9px/1.2 var(--font-label);
+  letter-spacing: 0.035em;
+}
+.pit-stop-log ol {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+}
+.pit-stop-log li button {
+  width: 100%;
+  padding: 6px 7px;
+  color: #e9edf0;
+  text-align: left;
+  background: #1a2026;
+  border: 1px solid #303a43;
+  border-left: 2px solid #e9a844;
+  cursor: pointer;
+}
+.pit-stop-log li button:hover,
+.pit-stop-log li button:focus-visible {
+  background: #242b32;
+  outline: 1px solid #f0ba59;
+}
+.pit-stop-main b {
+  color: #f0bd61;
+  font: 700 10px/1 var(--font-label);
+  letter-spacing: 0.06em;
+}
+.pit-stop-main strong {
+  font: 700 13px/1 var(--font-instrument);
+  font-variant-numeric: tabular-nums;
+}
+.pit-stop-meta {
+  margin-top: 4px;
+}
+.pit-stop-log-empty {
+  margin: 7px 0 3px;
+  color: #9ba5b0;
+  font: 500 10px/1.35 var(--font-body);
+}
+.pit-stop-log-empty button {
+  margin-left: 7px;
+  padding: 2px 5px;
+  color: #f1c16c;
+  background: transparent;
+  border: 1px solid #59606a;
+  cursor: pointer;
+}
+.pit-stop-log > small {
+  display: block;
+  margin-top: 5px;
+}
+.pitlane-shell .telemetry-grid {
+  gap: 2px 15px;
+  margin-top: 4px;
+}
+.pitlane-shell .telemetry-value {
+  padding: 8px 0;
+  border-color: #28313a;
+}
+.pitlane-shell .telemetry-value span {
+  color: #9ca7b3;
+  font: 600 11px/1.1 var(--font-label);
+  letter-spacing: 0.06em;
+}
+.pitlane-shell .telemetry-value strong {
+  color: #eff2f5;
+  font: 600 17px/1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.pitlane-shell .telemetry-footnote {
+  color: #89939f;
+  font: 400 11px/1.45 var(--font-sans);
+}
+@media (max-width: 1200px) {
+  .pitlane-shell .race-replay-workspace {
+    grid-template-columns: 178px minmax(0, 1fr) 270px;
+  }
+  .pitlane-shell .telemetry-rail {
+    padding-inline: 12px;
+  }
+  .pitlane-shell .speed-instrument svg {
+    width: min(100%, 330px);
+  }
+  .pitlane-shell .pedal-segments {
+    height: 19px;
+    gap: 2px;
+  }
+  .pitlane-shell .pedal-label {
+    font-size: 11px;
+  }
+}
+@media (max-width: 720px) {
+  .pitlane-shell .telemetry-driver strong {
+    font-size: 25px;
+  }
+  .pitlane-shell .speed-instrument svg {
+    width: min(100%, 390px);
+  }
+  .pitlane-shell .speed-instrument circle.gauge-rail {
+    stroke-width: 14;
+  }
+  .pitlane-shell .gauge-speed-number {
+    font-size: 72px;
+  }
+  .pitlane-shell .gauge-bottom-row {
+    grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+  }
+  .pitlane-shell .pedal-segments {
+    height: 23px;
+    gap: 3px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pitlane-shell .speed-instrument *,
+  .pitlane-shell .pedal-gauge * {
+    scroll-behavior: auto;
+  }
+}
+.telemetry-lap-line {
+  margin-top: 5px;
+  padding: 7px 0;
+  font-size: 9px;
+}
+.telemetry-lap-line > span {
+  color: #d6dbe0;
+  font-variant-numeric: tabular-nums;
+}
+.telemetry-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.pitlane-shell .telemetry-value {
+  padding: 5px 0;
+}
+.pitlane-shell .telemetry-value strong {
+  overflow: hidden;
+  font:
+    600 12px 'Barlow Condensed',
+    sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pitlane-shell .telemetry-footnote {
+  font-size: 8px;
+}
+.panel-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  min-height: 180px;
+  color: #cbd1d8;
+  font-size: 11px;
+  text-align: center;
+}
+.panel-loader.compact {
+  flex-direction: row;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 8px 11px;
+  font-size: 9px;
+}
+.f1-tire {
+  width: 64px;
+  height: 64px;
+  animation: tire-spin 0.78s linear infinite;
+}
+.panel-loader.compact .f1-tire {
+  width: 23px;
+  height: 23px;
+}
+.track-state .f1-tire {
+  width: 76px;
+  height: 76px;
+}
+.tire-outer {
+  fill: #16191d;
+  stroke: #555c64;
+  stroke-width: 5;
+}
+.tire-sidewall {
+  fill: #080a0d;
+  stroke: #858b91;
+  stroke-width: 1.2;
+}
+.tire-rim {
+  fill: #262c33;
+  stroke: #aab0b6;
+  stroke-width: 2;
+}
+.tire-hub {
+  fill: #e10600;
+}
+.tire-tread {
+  fill: #737a81;
+}
+.tire-mark {
+  fill: none;
+  stroke: #f3f4f5;
+  stroke-width: 3;
+  stroke-linecap: square;
+}
+@keyframes tire-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .f1-tire,
+  .load-stage.loading i {
+    animation: none;
+  }
+}
+.panel-error {
+  display: grid;
+  gap: 6px;
+  margin: 8px 10px;
+  color: #f18d91;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.panel-error button {
+  justify-self: start;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.pitlane-shell .race-transport {
+  background: #171b21;
+}
+.race-transport-clock strong {
+  font-size: 18px;
+}
+.race-event-progress {
+  background: linear-gradient(90deg, #a9141c, #ed1a24);
+}
+.race-event-cursor {
+  width: 4px;
+  height: 15px;
+  top: -5px;
+  border-radius: 2px;
+}
+
+@media (max-width: 1120px) {
+  .pitlane-shell .race-replay-workspace {
+    grid-template-columns: 178px minmax(0, 1fr) 270px;
+  }
+  .pitlane-shell .race-driver-team {
+    display: none;
+  }
+}
+@media (max-width: 820px) {
+  .pitlane-shell .race-replay-workspace {
+    grid-template-columns: 145px minmax(0, 1fr);
+  }
+  .pitlane-shell .race-track-map {
+    min-height: 340px;
+  }
+  .pitlane-shell .telemetry-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .speed-instrument {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .speed-instrument svg {
+    width: min(100%, 250px);
+  }
+  .pitlane-shell .telemetry-grid {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+@media (max-width: 560px) {
+  .pitlane-shell .race-replay-heading {
+    align-items: flex-start;
+    padding: 9px 10px;
+  }
+  .pitlane-shell .race-replay-heading h2 {
+    font-size: 20px;
+  }
+  .pitlane-shell .replay-source {
+    padding-top: 6px;
+    font-size: 7px;
+  }
+  .pitlane-shell .replay-progress-strip {
+    gap: 8px;
+    padding: 5px 8px;
+    overflow-x: auto;
+  }
+  .load-stage {
+    gap: 4px;
+    font-size: 7px;
+  }
+  .load-stage b {
+    display: none;
+  }
+  .load-progress-value {
+    font-size: 14px;
+  }
+  .pitlane-shell .race-replay-workspace {
+    grid-template-columns: 104px minmax(0, 1fr);
+  }
+  .pitlane-shell .race-tower {
+    max-height: 420px;
+  }
+  .pitlane-shell .race-tower-heading,
+  .pitlane-shell .race-driver-row {
+    grid-template-columns: 18px minmax(0, 1fr) 17px 28px 0;
+    gap: 3px;
+    padding-inline: 5px;
+  }
+  .pitlane-shell .race-driver-row {
+    min-height: 32px;
+  }
+  .pitlane-shell .race-driver-position {
+    font-size: 13px;
+  }
+  .pitlane-shell .race-driver-acronym {
+    padding-left: 4px;
+    font-size: 11px;
+  }
+  .pitlane-shell .race-driver-tyre {
+    width: 16px;
+    height: 16px;
+    font-size: 9px;
+  }
+  .pitlane-shell .race-driver-status {
+    font-size: 7px;
+  }
+  .pitlane-shell .race-driver-status[data-result]:not([data-result='']) {
+    font-size: 0;
+  }
+  .pitlane-shell .race-driver-status[data-result]:not([data-result=''])::after {
+    content: attr(data-result);
+    color: #f17b73;
+    font:
+      700 7px/1 'Barlow Condensed',
+      sans-serif;
+  }
+  .pitlane-shell .race-driver-result {
+    display: none;
+  }
+  .pitlane-shell .race-tower-heading span:nth-child(4) {
+    font-size: 0;
+  }
+  .pitlane-shell .race-tower-heading span:nth-child(4)::after {
+    content: 'STATE';
+    font-size: 6px;
+  }
+  .pitlane-shell .race-track-panel {
+    padding: 8px 6px;
+  }
+  .pitlane-shell .race-track-topline {
+    font-size: 8px;
+  }
+  .race-track-topline > span {
+    font-size: 8px;
+  }
+  .pitlane-shell .race-track-map {
+    min-height: 290px;
+  }
+  .race-car-label-group text {
+    font-size: 11px;
+  }
+  .circuit-caption {
+    flex-direction: column;
+    font-size: 7px;
+  }
+  .pitlane-shell .telemetry-rail {
+    padding: 12px;
+  }
+  .pitlane-shell .race-transport {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto 8px auto;
+    grid-template-areas: 'clock controls' 'seek seek' 'timeline timeline' 'legend legend' 'coverage coverage';
+    gap: 10px;
+    padding: 10px;
+  }
+  .race-coverage {
+    justify-self: start;
+    text-align: left;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .race-nav-link,
   .mode-strip a,
@@ -4196,5 +6120,268 @@ body {
   }
   .race-session-dialog.dialog-content {
     animation: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .pitlane-shell .race-replay-workspace {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pitlane-shell .race-track-panel {
+    grid-row: 1;
+  }
+  .pitlane-shell .race-tower {
+    grid-row: 2;
+    max-height: 250px;
+    border-right: 0;
+    border-top: 1px solid #303640;
+  }
+  .pitlane-shell .race-tower-heading,
+  .pitlane-shell .race-driver-row {
+    grid-template-columns: 32px 1fr 42px;
+    padding-inline: 10px;
+  }
+  .pitlane-shell .race-driver-tyre {
+    font-size: 9px;
+  }
+  .pitlane-shell .telemetry-rail {
+    grid-column: 1;
+    grid-row: 3;
+    display: block;
+    border-top: 1px solid #303640;
+    border-left: 0;
+  }
+  .speed-instrument svg {
+    width: min(100%, 240px);
+  }
+  .race-transport-controls .button {
+    width: 36px;
+    height: 36px;
+  }
+  .race-speed select {
+    min-height: 36px;
+  }
+}
+.track-kerb {
+  stroke: #abb1b8;
+  opacity: 0.42;
+}
+.selected-route {
+  fill: none;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.94;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.24));
+}
+.driver-group-badge {
+  cursor: pointer;
+}
+.driver-group-badge circle {
+  fill: #e10600;
+  stroke: #fff;
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.75));
+}
+.driver-group-badge text {
+  fill: #fff;
+  font:
+    750 11px var(--font-sans),
+    sans-serif;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.driver-group-badge:focus-visible {
+  outline: none;
+}
+.driver-group-badge:focus-visible circle {
+  stroke: #fff;
+  stroke-width: 3;
+}
+.driver-cluster-list {
+  position: absolute;
+  z-index: 4;
+  top: 44px;
+  left: 50%;
+  width: min(330px, calc(100% - 24px));
+  max-height: min(65%, 390px);
+  overflow: auto;
+  transform: translateX(-50%);
+  padding: 8px;
+  background: #151a21;
+  border: 1px solid #4c555f;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+}
+.driver-cluster-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 5px 8px;
+  color: #f4f5f6;
+  font:
+    650 16px 'Barlow Condensed',
+    sans-serif;
+  text-transform: uppercase;
+}
+.driver-cluster-heading button {
+  width: 28px;
+  height: 28px;
+  color: white;
+  background: #252b33;
+  border: 1px solid #49525d;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.driver-cluster-list > button {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 7px 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  color: #f4f5f6;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #2d333b;
+  text-align: left;
+  cursor: pointer;
+}
+.driver-cluster-list > button:hover {
+  background: #242a32;
+}
+.driver-cluster-list > button i {
+  width: 6px;
+  height: 20px;
+}
+.driver-cluster-list > button span {
+  overflow: hidden;
+  color: #a6afb9;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1120px) {
+  .race-deck-header {
+    align-items: flex-start;
+  }
+  .race-deck-timing {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .race-deck-time-meta {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
+
+@media (max-width: 820px) {
+  .race-control-deck {
+    gap: 12px;
+    padding: 13px 14px 11px;
+  }
+  .race-deck-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 13px;
+  }
+  .race-deck-timing {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .race-deck-time-meta {
+    justify-content: flex-end;
+  }
+  .race-deck-controls {
+    justify-content: center;
+  }
+  .race-timeline-event-menu {
+    transform: none;
+  }
+  .race-timeline-event-menu.align-left {
+    left: 0;
+    right: auto;
+  }
+  .race-timeline-event-menu.align-right {
+    left: auto;
+    right: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .race-control-deck {
+    gap: 10px;
+    padding: 11px 10px 10px;
+  }
+  .race-deck-timing {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .race-deck-time-main {
+    min-width: 0;
+  }
+  .race-deck-time-main strong {
+    font-size: 23px;
+  }
+  .race-deck-time-meta {
+    width: 100%;
+    justify-content: space-between;
+    gap: 7px;
+  }
+  .race-deck-time-meta > span {
+    font-size: 9px;
+  }
+  .race-deck-time-meta b {
+    font-size: 12px;
+  }
+  .race-deck-controls {
+    gap: 5px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 4px;
+  }
+  .race-deck-controls .button {
+    width: 34px;
+    height: 35px;
+  }
+  .race-deck-controls .race-skip-control {
+    width: 39px;
+  }
+  .race-deck-controls .race-play-control {
+    width: 45px;
+    height: 42px;
+  }
+  .race-speed-control {
+    margin-left: 0;
+  }
+  .race-speed-control select {
+    min-width: 66px;
+    height: 28px;
+    padding-left: 6px;
+  }
+  .race-lap-jump-control {
+    flex: 1 0 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin: 3px 0 0;
+  }
+  .race-lap-jump-control select {
+    width: 100%;
+    min-width: 0;
+    height: 29px;
+  }
+  .race-timeline-labels {
+    font-size: 9px;
+  }
+  .race-timeline-event {
+    width: 21px;
+    height: 19px;
   }
 }

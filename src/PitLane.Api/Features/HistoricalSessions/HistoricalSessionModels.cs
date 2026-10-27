@@ -48,7 +48,30 @@ public sealed record HistoricalLap(
     double? Sector1Duration,
     double? Sector2Duration,
     double? Sector3Duration,
-    bool? IsPitOutLap);
+    bool? IsPitOutLap,
+    int DriverNumber = 0);
+
+public sealed record HistoricalStint(
+    int DriverNumber,
+    int StintNumber,
+    string? Compound,
+    int? LapStart,
+    int? LapEnd,
+    int? TyreAgeAtStart);
+
+public sealed record HistoricalPitStop(
+    DateTimeOffset Date,
+    int DriverNumber,
+    int? LapNumber,
+    double? LaneDuration);
+
+public sealed record HistoricalSessionResult(
+    int DriverNumber,
+    bool Dnf,
+    bool Dns,
+    bool Dsq,
+    int? Position,
+    int? NumberOfLaps);
 
 public sealed record HistoricalPositionSample(
     DateTimeOffset Date,
