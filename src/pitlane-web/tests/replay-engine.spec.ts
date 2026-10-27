@@ -7,7 +7,19 @@ import type {
   HistoricalSessionResult,
   HistoricalStint,
 } from '../src/lib/api.js'
+import { bestSectors, compareDrivers } from '../src/features/replay/compare.js'
 import {
+  aeroAidChanges,
+  formatGap,
+  intervalAt,
+  intervalsByDriver,
+  lapTimingAt,
+  timedLapsByDriver,
+  trackStatusAt,
+  trackStatusEvents,
+  trackStatusLabel,
+  aeroAidStateAt,
+  createTrackProjection,
   interpolatePosition,
   driverTrackStatusAt,
   finalResultStatus,
@@ -18,6 +30,7 @@ import {
   placeDriverLabels,
   ReplayClock,
   removeSharedStationaryPositions,
+  retimeAlongPath,
   replayStatusAt,
   stintAt,
   tyreAtReplayTime,
@@ -282,7 +295,7 @@ test('DNS driver retains the provider-reported tyre when lap timing is absent', 
   })
 })
 
-test('final classification status takes precedence over a recent position sample', () => {
+test('DNS always wins, but DNF/DSQ cars keep their track status while recorded', () => {
   const position: HistoricalPosition = {
     date: date(9_000),
     x: 100,
@@ -299,20 +312,14 @@ test('final classification status takes precedence over a recent position sample
     numberOfLaps: 0,
   }
   expect(replayStatusAt(1, 10_000, [position], [], result)).toBe('DNS')
-  expect(
-    replayStatusAt(1, 10_000, [position], [], {
-      ...result,
-      dns: false,
-      dnf: true,
-    }),
-  ).toBe('DNF')
-  expect(
-    replayStatusAt(1, 10_000, [position], [], {
-      ...result,
-      dns: false,
-      dsq: true,
-    }),
-  ).toBe('DSQ')
+  const dnf = { ...result, dns: false, dnf: true }
+  const dsq = { ...result, dns: false, dsq: true }
+  // Recent sample: the car was still running at the playhead.
+  expect(replayStatusAt(1, 10_000, [position], [], dnf)).toBe('ON TRACK')
+  expect(replayStatusAt(1, 10_000, [position], [], dsq)).toBe('ON TRACK')
+  // No recent sample: fall back to the final classification.
+  expect(replayStatusAt(1, 60_000, [position], [], dnf)).toBe('DNF')
+  expect(replayStatusAt(1, 60_000, [position], [], dsq)).toBe('DSQ')
 })
 
 test('pit lane visit starts at recorded end minus lane duration and turns off at exit', () => {
@@ -496,4 +503,277 @@ test('multiple driver positions share the same replay timestamp across playback 
   clock.seek(100)
   expect(observed.get(16)).toBe(10_100)
   clock.dispose()
+})
+
+test('track orientation ignores panel size and never mirrors', () => {
+  // A tall right triangle in world space (Y up), counter-clockwise.
+  const corners = [
+    { x: 0, y: 0 },
+    { x: 1_000, y: 0 },
+    { x: 0, y: 4_000 },
+  ]
+  const samples: HistoricalPosition[] = corners.map((corner, index) => ({
+    date: date(index * 1_000),
+    x: corner.x,
+    y: corner.y,
+    z: null,
+    driverNumber: 1,
+  }))
+  const signedArea = (points: { x: number; y: number }[]) =>
+    points.reduce((sum, point, index) => {
+      const next = points[(index + 1) % points.length]
+      return sum + point.x * next.y - next.x * point.y
+    }, 0)
+  const span = (points: { x: number; y: number }[], axis: 'x' | 'y') =>
+    Math.max(...points.map((p) => p[axis])) -
+    Math.min(...points.map((p) => p[axis]))
+  // Normal and full-screen panels of different shapes.
+  for (const size of [
+    { width: 800, height: 300 },
+    { width: 300, height: 800 },
+  ]) {
+    const projection = createTrackProjection(samples, size)!
+    const screen = corners.map((c) => projection.project(c.x, c.y))
+    // The tall circuit is always laid on its side…
+    expect(span(screen, 'x')).toBeGreaterThan(span(screen, 'y'))
+    // …as a rotation: Y flips on screen, so world CCW becomes screen CW.
+    expect(Math.sign(signedArea(screen))).toBe(-Math.sign(signedArea(corners)))
+    for (const point of screen) {
+      expect(point.x).toBeGreaterThanOrEqual(0)
+      expect(point.y).toBeGreaterThanOrEqual(0)
+      expect(point.x).toBeLessThanOrEqual(size.width)
+      expect(point.y).toBeLessThanOrEqual(size.height)
+    }
+  }
+})
+
+test('overtake mode state follows race control enable/disable notices', () => {
+  const message = (ms: number, text: string) => ({
+    date: date(ms),
+    category: 'Other',
+    flag: null,
+    scope: null,
+    message: text,
+    driverNumber: null,
+    lapNumber: null,
+  })
+  const changes = aeroAidChanges(
+    [
+      message(30_000, 'OVERTAKE ENABLED'),
+      message(10_000, 'OVERTAKE DISABLED'),
+      message(20_000, 'DRS ENABLED'),
+      message(40_000, 'CAR 44 (HAM) TIME 1:35.1 DELETED'),
+      message(50_000, 'Overtake mode disabled'),
+    ],
+    'OVERTAKE',
+  )
+  expect(changes.map((change) => change.enabled)).toEqual([false, true, false])
+  expect(aeroAidStateAt(changes, 5_000)).toBe('unknown')
+  expect(aeroAidStateAt(changes, 15_000)).toBe('disabled')
+  expect(aeroAidStateAt(changes, 30_000)).toBe('enabled')
+  expect(aeroAidStateAt(changes, 60_000)).toBe('disabled')
+  expect(aeroAidChanges([message(1, 'DRS DISABLED')], 'DRS')).toHaveLength(1)
+})
+
+test('track status follows sector yellows, safety car and track-wide green', () => {
+  const rc = (
+    ms: number,
+    category: string,
+    flag: string | null,
+    scope: string | null,
+    text: string,
+    sector: number | null = null,
+  ) => ({
+    date: date(ms),
+    category,
+    flag,
+    scope,
+    sector,
+    message: text,
+    driverNumber: null,
+    lapNumber: null,
+  })
+  const events = trackStatusEvents([
+    rc(10_000, 'Flag', 'YELLOW', 'Sector', 'YELLOW IN TRACK SECTOR 3', 3),
+    // Sector missing from the field: parsed from the message text.
+    rc(
+      12_000,
+      'Flag',
+      'DOUBLE YELLOW',
+      'Sector',
+      'DOUBLE YELLOW IN TRACK SECTOR 4',
+    ),
+    rc(20_000, 'Flag', 'CLEAR', 'Sector', 'CLEAR IN TRACK SECTOR 4', 4),
+    rc(30_000, 'SafetyCar', null, null, 'SAFETY CAR DEPLOYED'),
+    rc(40_000, 'SafetyCar', null, null, 'SAFETY CAR IN THIS LAP'),
+    rc(50_000, 'Flag', 'GREEN', 'Track', 'TRACK CLEAR'),
+    rc(60_000, 'SafetyCar', null, null, 'VIRTUAL SAFETY CAR DEPLOYED'),
+    rc(70_000, 'Flag', 'RED', 'Track', 'RED FLAG'),
+    rc(5_000, 'Other', null, null, 'OVERTAKE ENABLED'),
+  ])
+  expect(trackStatusAt(events, 5_000).level).toBe('green')
+  const yellow = trackStatusAt(events, 13_000)
+  expect(yellow.level).toBe('double-yellow')
+  expect(yellow.sectors).toEqual([
+    { sector: 3, flag: 'YELLOW' },
+    { sector: 4, flag: 'DOUBLE YELLOW' },
+  ])
+  expect(trackStatusLabel(yellow)).toBe('Double yellow · sectors 3, 4')
+  expect(trackStatusAt(events, 25_000).level).toBe('yellow')
+  expect(trackStatusLabel(trackStatusAt(events, 35_000))).toBe('Safety car')
+  expect(trackStatusLabel(trackStatusAt(events, 45_000))).toBe(
+    'Safety car in this lap',
+  )
+  const green = trackStatusAt(events, 55_000)
+  expect(green.level).toBe('green')
+  expect(green.sectors).toEqual([])
+  expect(trackStatusAt(events, 65_000).level).toBe('vsc')
+  expect(trackStatusAt(events, 75_000).level).toBe('red')
+})
+
+test('retiming evens out jittered timestamps without moving any point', () => {
+  // Constant speed: 10 units every 250 ms, with ±80 ms timestamp jitter.
+  const jitter = [0, 80, -60, 70, -80, 50, -40, 60, -70, 0]
+  const points = jitter.map((offset, index) => ({
+    x: index * 10,
+    y: 0,
+    dateMs: 1_000 + index * 250 + offset,
+    segment: 0,
+  }))
+  const retimed = retimeAlongPath(points)
+  expect(retimed.map((point) => [point.x, point.y])).toEqual(
+    points.map((point) => [point.x, point.y]),
+  )
+  const raw = points.slice(1).map((p, i) => p.dateMs - points[i].dateMs)
+  const even = retimed.slice(1).map((p, i) => p.dateMs - retimed[i].dateMs)
+  const spread = (values: number[]) => Math.max(...values) - Math.min(...values)
+  expect(spread(even)).toBeLessThan(spread(raw) / 2)
+  for (const [index, point] of retimed.entries())
+    expect(Math.abs(point.dateMs - points[index].dateMs)).toBeLessThanOrEqual(
+      250,
+    )
+  // A stationary car keeps its recorded times.
+  const parked = [0, 1, 2, 3].map((index) => ({
+    x: 5,
+    y: 5,
+    dateMs: index * 300,
+    segment: 0,
+  }))
+  expect(retimeAlongPath(parked)).toEqual(parked)
+})
+
+test('gaps and lap timing are read at the playhead without looking ahead', () => {
+  const rows = intervalsByDriver([
+    {
+      date: date(10_000),
+      driverNumber: 4,
+      gapToLeaderSeconds: 1.2,
+      gapToLeaderLaps: null,
+      intervalSeconds: 0.4,
+      intervalLaps: null,
+    },
+    {
+      date: date(14_000),
+      driverNumber: 4,
+      gapToLeaderSeconds: null,
+      gapToLeaderLaps: 1,
+      intervalSeconds: 3.5,
+      intervalLaps: null,
+    },
+  ])
+  expect(intervalAt(rows.get(4), 9_000)).toBeNull()
+  expect(intervalAt(rows.get(4), 12_000)?.gapToLeaderSeconds).toBe(1.2)
+  expect(intervalAt(rows.get(4), 60_000)).toBeNull()
+  expect(formatGap(1.2, null)).toBe('+1.200')
+  expect(formatGap(null, 2)).toBe('+2 LAPS')
+  expect(formatGap(null, null)).toBe('—')
+  const lap = (lapNumber: number, startMs: number, seconds: number | null) => ({
+    lapNumber,
+    dateStart: date(startMs),
+    lapDuration: seconds,
+    sector1Duration: null,
+    sector2Duration: null,
+    sector3Duration: null,
+    isPitOutLap: false,
+    driverNumber: 4,
+  })
+  const laps = timedLapsByDriver([
+    lap(1, 0, 95),
+    lap(2, 95_000, 92),
+    lap(3, 187_000, 94),
+    lap(4, 281_000, null),
+  ]).get(4)
+  expect(lapTimingAt(laps, 94_000)).toEqual({ last: null, best: null })
+  const afterThree = lapTimingAt(laps, 281_000)
+  expect(afterThree.last?.lapNumber).toBe(3)
+  expect(afterThree.best?.lapNumber).toBe(2)
+})
+
+test('driver comparison only uses laps finished before the playhead', () => {
+  const lap = (
+    driverNumber: number,
+    lapNumber: number,
+    startMs: number,
+    seconds: number,
+    s1: number,
+  ) => ({
+    driverNumber,
+    lapNumber,
+    dateStart: date(startMs),
+    lapDuration: seconds,
+    sector1Duration: s1,
+    sector2Duration: 30,
+    sector3Duration: seconds - s1 - 30,
+    isPitOutLap: false,
+  })
+  const laps = [
+    lap(1, 1, 0, 90, 30),
+    lap(1, 2, 90_000, 91, 29.5),
+    lap(2, 1, 1_000, 90.5, 30.2),
+    lap(2, 2, 91_500, 90, 30.1),
+  ]
+  const events = [
+    {
+      timeMs: 100_000,
+      message: {
+        date: date(100_000),
+        category: 'SafetyCar',
+        flag: null,
+        scope: null,
+        sector: null,
+        message: 'VIRTUAL SAFETY CAR DEPLOYED',
+        driverNumber: null,
+        lapNumber: 2,
+      },
+    },
+  ]
+  const early = compareDrivers({
+    laps,
+    pitStops: [],
+    events,
+    a: 1,
+    b: 2,
+    untilMs: 92_000,
+  })
+  expect(early.map((row) => row.lap)).toEqual([1])
+  expect(early[0].delta).toBeCloseTo(-0.5)
+  expect(early[0].gap).toBeCloseTo(-1.5)
+  const rows = compareDrivers({
+    laps,
+    pitStops: [
+      { date: date(150_000), driverNumber: 2, lapNumber: 2, laneDuration: 21 },
+    ],
+    events,
+    a: 1,
+    b: 2,
+    untilMs: 200_000,
+  })
+  expect(rows[1]).toMatchObject({
+    lap: 2,
+    pitA: false,
+    pitB: true,
+    neutralised: 'vsc',
+  })
+  expect(rows[1].gap).toBeCloseTo(-0.5)
+  expect(bestSectors(rows, 'a')[0]).toBe(29.5)
 })

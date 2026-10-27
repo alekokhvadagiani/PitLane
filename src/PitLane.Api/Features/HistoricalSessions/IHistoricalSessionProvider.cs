@@ -10,6 +10,7 @@ public interface IHistoricalSessionProvider
     Task<HistoricalCatalog<HistoricalLap>> GetSessionLapsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalStint>> GetStintsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalPitStop>> GetPitStopsAsync(int sessionKey, CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalRaceControlMessage>> GetRaceControlAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalSessionResult>> GetSessionResultsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalPositionSample>> GetPositionsAsync(
         int sessionKey,
@@ -24,6 +25,11 @@ public interface IHistoricalSessionProvider
         CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalClassificationChange>> GetClassificationAsync(
         int sessionKey,
+        CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalInterval>> GetIntervalsAsync(
+        int sessionKey,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
         CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalCarSample>> GetCarDataAsync(
         int sessionKey,

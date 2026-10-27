@@ -135,7 +135,9 @@ test('historical replay data is reused after navigating away and back', async ({
   const counts = new Map<string, number>()
   await installReplayFixture(page, { counts })
   await page.goto(selectionUrl)
-  await expect(page.getByText('100%', { exact: true })).toBeVisible()
+  // The loading strip is removed once every stage is ready.
+  await expect(page.locator('.race-track-map')).toBeVisible()
+  await expect(page.locator('.replay-progress-strip')).toHaveCount(0)
   await expect(
     page.getByRole('button', { name: 'Select Test Driver on circuit' }),
   ).toBeVisible()
@@ -149,7 +151,11 @@ test('historical replay data is reused after navigating away and back', async ({
   await page.evaluate((hash) => {
     location.hash = hash
   }, selectionUrl.slice(1))
-  await expect(page.getByText('100%', { exact: true })).toBeVisible()
+  await expect(page.locator('.race-track-map')).toBeVisible()
+  await expect(page.locator('.replay-progress-strip')).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'Select Test Driver on circuit' }),
+  ).toBeVisible()
   expect([...counts.entries()]).toEqual([...requestsBefore.entries()])
 })
 

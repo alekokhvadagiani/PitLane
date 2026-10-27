@@ -39,7 +39,8 @@ public sealed record HistoricalDriver(
     string FullName,
     string NameAcronym,
     string TeamName,
-    string TeamColour);
+    string TeamColour,
+    string? HeadshotUrl);
 
 public sealed record HistoricalLap(
     int LapNumber,
@@ -65,6 +66,16 @@ public sealed record HistoricalPitStop(
     int? LapNumber,
     double? LaneDuration);
 
+public sealed record HistoricalRaceControlMessage(
+    DateTimeOffset Date,
+    string? Category,
+    string? Flag,
+    string? Scope,
+    int? Sector,
+    string Message,
+    int? DriverNumber,
+    int? LapNumber);
+
 public sealed record HistoricalSessionResult(
     int DriverNumber,
     bool Dnf,
@@ -84,6 +95,18 @@ public sealed record HistoricalClassificationChange(
     DateTimeOffset Date,
     int DriverNumber,
     int Position);
+
+/// <summary>
+/// Gap to the leader and to the car ahead. Each is either seconds or, for
+/// lapped cars, a whole number of laps; both null when not reported.
+/// </summary>
+public sealed record HistoricalInterval(
+    DateTimeOffset Date,
+    int DriverNumber,
+    double? GapToLeaderSeconds,
+    int? GapToLeaderLaps,
+    double? IntervalSeconds,
+    int? IntervalLaps);
 
 public sealed record HistoricalCarSample(
     DateTimeOffset Date,

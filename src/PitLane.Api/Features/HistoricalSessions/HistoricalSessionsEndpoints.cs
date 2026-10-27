@@ -208,6 +208,28 @@ public static class HistoricalSessionsEndpoints
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+        group.MapGet("/sessions/{sessionKey:int}/race-control", async (
+                int sessionKey,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                try
+                {
+                    return Results.Ok(await provider.GetRaceControlAsync(sessionKey, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Race control messages are temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalSessionRaceControl")
+            .WithSummary("List race control messages")
+            .WithDescription("Returns timestamped race control messages (flags, track status, and session-wide notices such as 2026 Overtake Mode enable/disable).")
+            .Produces<HistoricalCatalog<HistoricalRaceControlMessage>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         group.MapGet("/sessions/{sessionKey:int}/results", async (
                 int sessionKey,
                 IHistoricalSessionProvider provider,
@@ -286,6 +308,32 @@ public static class HistoricalSessionsEndpoints
             .WithSummary("Load all driver positions for a bounded race replay window")
             .WithDescription("Returns recorded OpenF1 X/Y locations for all drivers in a maximum three-minute UTC window.")
             .Produces<HistoricalCatalog<HistoricalPositionSample>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+        group.MapGet("/sessions/{sessionKey:int}/intervals", async (
+                int sessionKey,
+                DateTimeOffset fromUtc,
+                DateTimeOffset toUtc,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                if (toUtc <= fromUtc) return Invalid("toUtc", "End time must be later than start time.");
+                if (toUtc - fromUtc > TimeSpan.FromMinutes(3)) return Invalid("toUtc", "Interval requests are limited to a three-minute window.");
+                try
+                {
+                    return Results.Ok(await provider.GetIntervalsAsync(sessionKey, fromUtc, toUtc, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Session intervals are temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalIntervals")
+            .WithSummary("Load gaps to the leader and to the car ahead for a bounded window")
+            .WithDescription("Returns OpenF1 race intervals (about every 4 s) for all drivers in a maximum three-minute UTC window. Lapped gaps are returned as whole laps. Not available for practice or qualifying.")
+            .Produces<HistoricalCatalog<HistoricalInterval>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 

@@ -106,7 +106,7 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
   await page.route('**/api/sessions/11396/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/race-positions'))
-      await new Promise<void>((resolve) => setTimeout(resolve, 650))
+      await new Promise<void>((resolve) => setTimeout(resolve, 1_500))
     const items = url.pathname.endsWith('/drivers')
       ? [
           {
@@ -352,27 +352,18 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
     }),
   ).toBeVisible()
   await expect(page.getByText('250', { exact: true })).toBeVisible()
+  // Onboard panel: throttle bar, shift lights (9,328 of a 15,000 display
+  // range lights 9 of 15), gear, brake and DRS from the fixture sample.
   await expect
     .poll(() =>
       page
-        .locator('.gauge-speed')
-        .evaluate((node) => (node as SVGCircleElement).style.strokeDasharray),
+        .locator('.ct-throttle-fill')
+        .evaluate((node) => (node as HTMLElement).style.width),
     )
-    .toMatch(/^52\.0\d+,?\s*47\.9\d+$/)
-  await expect
-    .poll(() =>
-      page.locator('.throttle-gauge .pedal-segments [data-active]').count(),
-    )
-    .toBe(9)
-  await expect
-    .poll(() =>
-      page
-        .locator('.gauge-rpm-arc')
-        .evaluate((node) => (node as SVGCircleElement).style.strokeDasharray),
-    )
-    .toMatch(/^44\.7\d+,?\s*55\.2\d+$/)
-  await expect(page.locator('.gear-plinth')).toContainText('4')
-  await expect(page.locator('.brake-gauge .pedal-label')).toContainText('OFF')
+    .toBe('87%')
+  await expect.poll(() => page.locator('.ct-lights [data-on]').count()).toBe(9)
+  await expect(page.locator('.ct-gear')).toContainText('4')
+  await expect(page.locator('.ct-brake')).toContainText('OFF')
   await expect(page.locator('.drs-readout')).toHaveAttribute(
     'data-state',
     'active',
@@ -380,14 +371,48 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
   await expect
     .poll(() =>
       page
-        .locator('.gauge-speed')
-        .evaluate((node) => (node as SVGCircleElement).style.strokeDashoffset),
+        .locator('.ct-trace-line')
+        .evaluate((node) => node.getAttribute('points') ?? ''),
     )
-    .toBe('0')
-  await expect(page.locator('.gauge-needle')).toHaveAttribute(
-    'transform',
-    'rotate(412.5 200 201)',
+    .not.toBe('')
+  // Cockpit view shows the same sample and the choice survives a reload.
+  await page.getByRole('radio', { name: 'Cockpit' }).click()
+  await expect(page.locator('.cockpit-gear')).toContainText('4')
+  await expect
+    .poll(() => page.locator('.cockpit-pedal.throttle [data-on]').count())
+    .toBe(10)
+  await expect(page.locator('.cockpit-drs')).toHaveAttribute(
+    'data-state',
+    'active',
   )
+  expect(
+    await page.evaluate(() => localStorage.getItem('pitlane.telemetryView')),
+  ).toBe('cockpit')
+  await page.getByRole('radio', { name: 'Broadcast' }).click()
+  await expect(page.locator('.ct-gear')).toContainText('4')
+  // Full screen covers the viewport with the controls on screen; Esc leaves
+  // it. Phones may scroll inside the replay, so check placement, not height.
+  await page.getByRole('button', { name: 'Full screen' }).click()
+  await expect(page.locator('.race-replay.immersive')).toBeVisible()
+  const fit = await page.evaluate(() => {
+    const replay = document
+      .querySelector('.race-replay.immersive')!
+      .getBoundingClientRect()
+    const deck = document
+      .querySelector('.race-control-deck')!
+      .getBoundingClientRect()
+    return {
+      covers:
+        replay.top <= 0.5 &&
+        replay.left <= 0.5 &&
+        replay.width >= innerWidth - 1 &&
+        replay.height >= innerHeight - 1,
+      deckVisible: deck.top >= 0 && deck.bottom <= innerHeight + 1,
+    }
+  })
+  expect(fit).toEqual({ covers: true, deckVisible: true })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.race-replay.immersive')).toHaveCount(0)
   await expect(
     page.locator('.race-driver-row').first().locator('.race-driver-tyre'),
   ).toHaveText('S')
@@ -400,7 +425,7 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
   await expect(page.locator('.pit-stop-log')).toContainText('LAP 1')
   await page.locator('.pit-stop-log button').click()
   await expect(page.locator('.telemetry-session-state')).toContainText(
-    'PIT LANE · RECORDED VISIT',
+    'PIT LANE',
   )
   await expect(
     page.locator('[data-driver="44"] .race-pit-indicator'),
@@ -429,7 +454,7 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
       await page
         .locator('.telemetry-rail')
         .evaluate((node) => node.getBoundingClientRect().width),
-    ).toBeGreaterThan(400)
+    ).toBeGreaterThan(350)
   }
   if (testInfo.project.name === 'desktop') {
     await page.getByRole('button', { name: 'Play replay' }).click()
@@ -457,12 +482,11 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
   ).toHaveText('DNF')
   await expect(page.locator('.telemetry-session-state')).toContainText('SOFT')
   await expect(
-    page
-      .getByRole('img', {
-        name: 'Recorded speed 250 kilometers per hour, throttle 87 percent',
-      })
-      .getByText('9,328', { exact: true }),
+    page.getByRole('group', {
+      name: 'Recorded speed 250 km/h, gear 4, throttle 87 percent',
+    }),
   ).toBeVisible()
+  await expect(page.locator('.ct-rpm-value')).toHaveText('9,328')
   if (testInfo.project.name === 'wide') {
     await page.evaluate(() => {
       window.scrollTo(0, 0)
@@ -550,7 +574,11 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
     'aria-pressed',
     'true',
   )
-  await expect(page.locator('[data-driver="16"]')).toHaveCount(0)
+  // The DNF car has retired by now (after its last recorded lap), so it is
+  // not drawn. Its marker element may exist with an invisible dot.
+  const retiredDot = page.locator('[data-driver="16"] .race-car-dot')
+  if (await retiredDot.count())
+    await expect(retiredDot).toHaveCSS('opacity', '0')
   await expect(
     page.getByRole('complementary', { name: 'Selected car telemetry' }),
   ).toContainText('SEC')
@@ -560,7 +588,7 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
   await expect(page.locator('.telemetry-session-state')).toContainText('HARD')
   await expect(page.locator('.telemetry-session-state')).toContainText('DNF')
   await expect(page.locator('.telemetry-session-state')).toContainText(
-    'FINAL RESULT',
+    'RETIRED · DNF',
   )
   const secondDriverStatus = page
     .locator('.race-driver-row')

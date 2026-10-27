@@ -105,7 +105,8 @@ public sealed class OpenF1HistoricalSessionProvider(
                     item.FullName,
                     item.NameAcronym,
                     item.TeamName,
-                    item.TeamColour))
+                    item.TeamColour,
+                    SafeImageUrl(item.HeadshotUrl)))
                 .ToArray();
 
             return new HistoricalCatalog<HistoricalDriver>(Source, timeProvider.GetUtcNow(), drivers);
@@ -185,6 +186,29 @@ public sealed class OpenF1HistoricalSessionProvider(
                 .Select(item => new HistoricalPitStop(item.Date, item.DriverNumber, item.LapNumber, item.LaneDuration))
                 .ToArray();
             return new HistoricalCatalog<HistoricalPitStop>(Source, timeProvider.GetUtcNow(), stops);
+        })!;
+
+    public Task<HistoricalCatalog<HistoricalRaceControlMessage>> GetRaceControlAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:race-control:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1RaceControl>($"race_control?session_key={sessionKey}", cancellationToken);
+            var messages = records
+                .Where(item => item.SessionKey == sessionKey && !string.IsNullOrWhiteSpace(item.Message))
+                .OrderBy(item => item.Date)
+                .Select(item => new HistoricalRaceControlMessage(
+                    item.Date,
+                    item.Category,
+                    item.Flag,
+                    item.Scope,
+                    item.Sector,
+                    item.Message!,
+                    item.DriverNumber,
+                    item.LapNumber))
+                .ToArray();
+            return new HistoricalCatalog<HistoricalRaceControlMessage>(Source, timeProvider.GetUtcNow(), messages);
         })!;
 
     public Task<HistoricalCatalog<HistoricalSessionResult>> GetSessionResultsAsync(
@@ -304,6 +328,51 @@ public sealed class OpenF1HistoricalSessionProvider(
         })!;
     }
 
+    public Task<HistoricalCatalog<HistoricalInterval>> GetIntervalsAsync(
+        int sessionKey,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken cancellationToken)
+    {
+        ValidateWindow(fromUtc, toUtc);
+        var from = FormatDate(fromUtc);
+        var to = FormatDate(toUtc);
+        var path = $"intervals?session_key={sessionKey}&date%3E%3D{Uri.EscapeDataString(from)}&date%3C{Uri.EscapeDataString(to)}";
+        return cache.GetOrCreateAsync($"openf1:intervals:{sessionKey}:{from}:{to}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1Interval>(path, cancellationToken);
+            var intervals = records
+                .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0 && item.Date >= fromUtc && item.Date < toUtc)
+                .OrderBy(item => item.DriverNumber)
+                .ThenBy(item => item.Date)
+                .Select(item =>
+                {
+                    var (leaderSeconds, leaderLaps) = ParseGap(item.GapToLeader);
+                    var (aheadSeconds, aheadLaps) = ParseGap(item.Interval);
+                    return new HistoricalInterval(item.Date, item.DriverNumber, leaderSeconds, leaderLaps, aheadSeconds, aheadLaps);
+                })
+                .ToArray();
+            return new HistoricalCatalog<HistoricalInterval>(Source, timeProvider.GetUtcNow(), intervals);
+        })!;
+    }
+
+    // OpenF1 reports a gap as seconds (number) or as text such as "+1 LAP".
+    private static (double? Seconds, int? Laps) ParseGap(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var seconds))
+            return (seconds, null);
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            var text = value.GetString() ?? string.Empty;
+            var match = System.Text.RegularExpressions.Regex.Match(text, @"(\d+)\s*LAP", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var laps)) return (null, laps);
+            if (double.TryParse(text.TrimStart('+'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                return (parsed, null);
+        }
+        return (null, null);
+    }
+
     private static void ValidateWindow(DateTimeOffset fromUtc, DateTimeOffset toUtc)
     {
         if (toUtc <= fromUtc || toUtc - fromUtc > TimeSpan.FromMinutes(3))
@@ -399,7 +468,14 @@ public sealed class OpenF1HistoricalSessionProvider(
         [property: JsonPropertyName("full_name")] string FullName,
         [property: JsonPropertyName("name_acronym")] string NameAcronym,
         [property: JsonPropertyName("team_name")] string TeamName,
-        [property: JsonPropertyName("team_colour")] string TeamColour);
+        [property: JsonPropertyName("team_colour")] string TeamColour,
+        [property: JsonPropertyName("headshot_url")] string? HeadshotUrl);
+
+    // Provider data is untrusted: only pass through absolute https image URLs.
+    private static string? SafeImageUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            ? uri.AbsoluteUri
+            : null;
 
     private sealed record OpenF1Lap(
         [property: JsonPropertyName("driver_number")] int DriverNumber,
@@ -419,6 +495,24 @@ public sealed class OpenF1HistoricalSessionProvider(
         [property: JsonPropertyName("lap_start")] int? LapStart,
         [property: JsonPropertyName("lap_end")] int? LapEnd,
         [property: JsonPropertyName("tyre_age_at_start")] int? TyreAgeAtStart);
+
+    private sealed record OpenF1RaceControl(
+        [property: JsonPropertyName("session_key")] int SessionKey,
+        [property: JsonPropertyName("date")] DateTimeOffset Date,
+        [property: JsonPropertyName("category")] string? Category,
+        [property: JsonPropertyName("flag")] string? Flag,
+        [property: JsonPropertyName("scope")] string? Scope,
+        [property: JsonPropertyName("sector")] int? Sector,
+        [property: JsonPropertyName("message")] string? Message,
+        [property: JsonPropertyName("driver_number")] int? DriverNumber,
+        [property: JsonPropertyName("lap_number")] int? LapNumber);
+
+    private sealed record OpenF1Interval(
+        [property: JsonPropertyName("session_key")] int SessionKey,
+        [property: JsonPropertyName("driver_number")] int DriverNumber,
+        [property: JsonPropertyName("date")] DateTimeOffset Date,
+        [property: JsonPropertyName("gap_to_leader")] JsonElement GapToLeader,
+        [property: JsonPropertyName("interval")] JsonElement Interval);
 
     private sealed record OpenF1PitStop(
         [property: JsonPropertyName("session_key")] int SessionKey,

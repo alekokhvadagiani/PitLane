@@ -1,19 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, Ref } from 'react'
+import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
   Flag,
   Pause,
   Play,
+  Maximize2,
+  Minimize2,
   RotateCcw,
   SkipBack,
   SkipForward,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  DriverCard,
+  TelemetryPanel,
+  type AeroContext,
+} from '@/features/replay/telemetry-panel'
+import '@/features/replay/replay-visuals.css'
+import { TyreGraphic, TyreLoader } from '@/features/replay/tyre'
+import { compoundColour } from '@/features/replay/tyre-colours'
+import {
   getCarData,
   getClassification,
+  getIntervals,
+  getRaceControl,
   getRacePositions,
   getSessionLaps,
   getSessionDrivers,
@@ -31,6 +43,17 @@ import {
   type RaceSession,
 } from '@/lib/api'
 import {
+  aeroAidChanges,
+  createTrackProjection,
+  formatGap,
+  intervalAt,
+  intervalsByDriver,
+  lapTimingAt,
+  timedLapsByDriver,
+  trackStatusAt,
+  trackStatusEvents,
+  trackStatusLabel,
+  type RaceControlEvent,
   interpolatePosition,
   finalResultStatus,
   lapAt,
@@ -39,10 +62,15 @@ import {
   placeDriverLabels,
   removeSharedStationaryPositions,
   ReplayClock,
+  retimeAlongPath,
+  pitLaneTraceCandidates,
+  startFinishEstimate,
+  retirementTimes,
   replayStatusAt,
   tyreAtReplayTime,
-  telemetryAt,
+  type MapSize,
   type ReplayPoint,
+  type TrackProjection,
 } from '@/features/replay/replay-engine'
 
 const WINDOW_MS = 180_000
@@ -56,10 +84,21 @@ const NO_LAPS: HistoricalLap[] = []
 const NO_STINTS: HistoricalStint[] = []
 const NO_PIT_STOPS: HistoricalPitStop[] = []
 const NO_RESULTS: HistoricalSessionResult[] = []
-const MAP_WIDTH = 720
-const MAP_HEIGHT = 460
+const DEFAULT_MAP_SIZE: MapSize = { width: 720, height: 460 }
 
 type DriverPath = { driver: HistoricalDriver; points: ReplayPoint[] }
+
+// The replay clock fires every animation frame. Writing identical values
+// still invalidates style and layout, so only touch the DOM on change.
+function setText(node: HTMLElement, value: string) {
+  if (node.textContent !== value) node.textContent = value
+}
+function setData(node: HTMLElement, key: string, value: string) {
+  if (node.dataset[key] !== value) node.dataset[key] = value
+}
+function setTitle(node: HTMLElement, value: string) {
+  if (node.title !== value) node.title = value
+}
 
 function utc(value: number) {
   return new Date(value).toISOString()
@@ -89,9 +128,48 @@ function formatElapsed(value: number) {
 type ReplayTimelineEvent = {
   id: string
   timeMs: number
-  kind: 'lap' | 'pit-entry' | 'pit-exit' | 'pit-stop'
+  kind:
+    | 'lap'
+    | 'pit-entry'
+    | 'pit-exit'
+    | 'pit-stop'
+    | 'flag-yellow'
+    | 'flag-red'
+    | 'safety-car'
   label: string
   detail: string
+}
+
+// Session-wide race control markers: yellow/red flags and SC/VSC deployments.
+function raceControlTimelineEvents(
+  events: RaceControlEvent[],
+  startMs: number,
+  durationMs: number,
+): ReplayTimelineEvent[] {
+  const markers: ReplayTimelineEvent[] = []
+  for (const [index, { timeMs, message }] of events.entries()) {
+    if (timeMs < startMs || timeMs > startMs + durationMs) continue
+    const flag = message.flag?.toUpperCase() ?? ''
+    const text = message.message.toUpperCase()
+    const base = {
+      id: `rc-${timeMs}-${index}`,
+      timeMs,
+      detail: message.message,
+    }
+    if (flag === 'YELLOW' || flag === 'DOUBLE YELLOW')
+      markers.push({
+        ...base,
+        kind: 'flag-yellow',
+        label: flag === 'DOUBLE YELLOW' ? 'Double yellow' : 'Yellow flag',
+      })
+    else if (flag === 'RED')
+      markers.push({ ...base, kind: 'flag-red', label: 'Red flag' })
+    else if (text.includes('VIRTUAL SAFETY CAR DEPLOYED'))
+      markers.push({ ...base, kind: 'safety-car', label: 'Virtual safety car' })
+    else if (text.includes('SAFETY CAR DEPLOYED'))
+      markers.push({ ...base, kind: 'safety-car', label: 'Safety car' })
+  }
+  return markers
 }
 
 function timelineEventsForDriver(
@@ -190,6 +268,19 @@ function formatLapTime(value: number | null | undefined) {
   return `${minutes}:${(value - minutes * 60).toFixed(3).padStart(6, '0')}`
 }
 
+type TowerMode = 'timing' | 'compact'
+const TOWER_MODE_KEY = 'pitlane.towerMode'
+
+function readTowerMode(): TowerMode {
+  try {
+    return localStorage.getItem(TOWER_MODE_KEY) === 'compact'
+      ? 'compact'
+      : 'timing'
+  } catch {
+    return 'timing'
+  }
+}
+
 function teamColor(color: string) {
   return /^[0-9a-f]{6}$/i.test(color) ? `#${color}` : '#aeb7c2'
 }
@@ -198,54 +289,6 @@ function windowBounds(startMs: number, durationMs: number, index: number) {
   const from = startMs + index * WINDOW_MS
   const to = Math.min(from + WINDOW_MS, startMs + durationMs)
   return from < to ? { fromUtc: utc(from), toUtc: utc(to), fromMs: from } : null
-}
-
-type TrackProjection = {
-  project: (x: number, y: number) => { x: number; y: number }
-}
-
-function createTrackProjection(
-  samples: HistoricalPosition[],
-): TrackProjection | null {
-  const validRows = removeSharedStationaryPositions(samples).filter(
-    (row) =>
-      row.x !== null &&
-      row.y !== null &&
-      Number.isFinite(row.x) &&
-      Number.isFinite(row.y),
-  )
-  if (validRows.length < 2) return null
-  const minX = Math.min(...validRows.map((row) => row.x!))
-  const maxX = Math.max(...validRows.map((row) => row.x!))
-  const minY = Math.min(...validRows.map((row) => row.y!))
-  const maxY = Math.max(...validRows.map((row) => row.y!))
-  const rotate = maxY - minY > (maxX - minX) * 1.22
-  const raw = validRows.map((point) => ({
-    x: rotate ? point.y! : point.x!,
-    y: rotate ? point.x! : point.y!,
-  }))
-  const lowX = Math.min(...raw.map((point) => point.x))
-  const highX = Math.max(...raw.map((point) => point.x))
-  const lowY = Math.min(...raw.map((point) => point.y))
-  const highY = Math.max(...raw.map((point) => point.y))
-  const usableWidth = MAP_WIDTH - 72
-  const usableHeight = MAP_HEIGHT - 72
-  const scale = Math.min(
-    usableWidth / Math.max(highX - lowX, 1),
-    usableHeight / Math.max(highY - lowY, 1),
-  )
-  const offsetX = (MAP_WIDTH - (highX - lowX) * scale) / 2
-  const offsetY = (MAP_HEIGHT - (highY - lowY) * scale) / 2
-  return {
-    project: (x, y) => {
-      const projectedX = rotate ? y : x
-      const projectedY = rotate ? x : y
-      return {
-        x: offsetX + (projectedX - lowX) * scale,
-        y: offsetY + (highY - projectedY) * scale,
-      }
-    },
-  }
 }
 
 function toPaths(
@@ -290,7 +333,7 @@ function toPaths(
       })
       previousDate = dateMs
     }
-    return points.length ? [{ driver, points }] : []
+    return points.length ? [{ driver, points: retimeAlongPath(points) }] : []
   })
 }
 
@@ -367,6 +410,9 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   const [classificationIndex, setClassificationIndex] = useState(-1)
   const [timelineWidth, setTimelineWidth] = useState(720)
   const [openEventCluster, setOpenEventCluster] = useState<string | null>(null)
+  const [mapSize, setMapSize] = useState<MapSize>(DEFAULT_MAP_SIZE)
+  const [immersive, setImmersive] = useState(false)
+  const [towerMode, setTowerMode] = useState<TowerMode>(readTowerMode)
   const rangeRef = useRef<HTMLInputElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
   const timeRef = useRef<HTMLSpanElement>(null)
@@ -379,7 +425,9 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   const eventCursorRef = useRef<HTMLSpanElement>(null)
   const tyreNodes = useRef(new Map<number, HTMLSpanElement>())
   const statusNodes = useRef(new Map<number, HTMLSpanElement>())
+  const timingNodes = useRef(new Map<number, HTMLSpanElement>())
   const selectedTyreRef = useRef<HTMLSpanElement>(null)
+  const selectedTyreIconRef = useRef<HTMLElement>(null)
   const selectedStatusRef = useRef<HTMLSpanElement>(null)
   const classificationIndexRef = useRef(-1)
   const playStateRef = useRef(false)
@@ -390,11 +438,6 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     : null
   const endWindow = validDuration
     ? windowBounds(startMs, durationMs, windowIndex + 1)
-    : null
-  // A fixed early-race sample is used only to establish a stable circuit view.
-  // Current car positions are still read from the active replay window.
-  const circuitWindow = validDuration
-    ? windowBounds(startMs, durationMs, 1)
     : null
 
   const driversQuery = useQuery({
@@ -418,6 +461,88 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     gcTime: GC_MS,
     retry: false,
   })
+  // One fixed window defines the circuit outline; car positions still come
+  // from the active replay window. It starts at the first recorded lap 2, when
+  // cars are at racing speed. A fixed minute offset fails on delayed starts:
+  // at Suzuka 2026 it caught only pit-lane crawling and drew a straight line.
+  const firstLapTwoMs = useMemo(() => {
+    let earliest = Infinity
+    for (const lap of sessionLapsQuery.data?.items ?? NO_LAPS) {
+      if (lap.lapNumber !== 2 || !lap.dateStart) continue
+      const lapStartMs = Date.parse(lap.dateStart)
+      if (Number.isFinite(lapStartMs)) earliest = Math.min(earliest, lapStartMs)
+    }
+    return earliest
+  }, [sessionLapsQuery.data])
+  const circuitWindow = !validDuration
+    ? null
+    : sessionLapsQuery.isPending
+      ? null
+      : Number.isFinite(firstLapTwoMs) &&
+          firstLapTwoMs >= startMs &&
+          firstLapTwoMs < startMs + durationMs
+        ? {
+            fromMs: firstLapTwoMs,
+            fromUtc: utc(firstLapTwoMs),
+            toUtc: utc(
+              Math.min(firstLapTwoMs + WINDOW_MS, startMs + durationMs),
+            ),
+          }
+        : windowBounds(startMs, durationMs, 1)
+  // Gaps come in 3-minute windows. The previous window is kept too, so the
+  // latest gap before the playhead is known right after a window boundary.
+  const intervalWindows = validDuration
+    ? [windowIndex - 1, windowIndex]
+        .filter((index) => index >= 0)
+        .map((index) => windowBounds(startMs, durationMs, index))
+    : []
+  const previousIntervalWindow =
+    intervalWindows.length > 1 ? intervalWindows[0] : null
+  const currentIntervalWindow = intervalWindows.at(-1) ?? null
+  const previousIntervalsQuery = useQuery({
+    queryKey: [
+      'historical-intervals',
+      session.sessionKey,
+      previousIntervalWindow?.fromUtc,
+    ],
+    queryFn: ({ signal }) =>
+      getIntervals(
+        session.sessionKey,
+        previousIntervalWindow!.fromUtc,
+        previousIntervalWindow!.toUtc,
+        signal,
+      ),
+    enabled: previousIntervalWindow !== null,
+    staleTime: STALE_MS,
+    gcTime: GC_MS,
+    retry: false,
+  })
+  const currentIntervalsQuery = useQuery({
+    queryKey: [
+      'historical-intervals',
+      session.sessionKey,
+      currentIntervalWindow?.fromUtc,
+    ],
+    queryFn: ({ signal }) =>
+      getIntervals(
+        session.sessionKey,
+        currentIntervalWindow!.fromUtc,
+        currentIntervalWindow!.toUtc,
+        signal,
+      ),
+    enabled: currentIntervalWindow !== null,
+    staleTime: STALE_MS,
+    gcTime: GC_MS,
+    retry: false,
+  })
+  const intervals = useMemo(
+    () =>
+      intervalsByDriver([
+        ...(previousIntervalsQuery.data?.items ?? []),
+        ...(currentIntervalsQuery.data?.items ?? []),
+      ]),
+    [previousIntervalsQuery.data, currentIntervalsQuery.data],
+  )
   const stintsQuery = useQuery({
     queryKey: ['historical-session-stints', session.sessionKey],
     queryFn: ({ signal }) => getSessionStints(session.sessionKey, signal),
@@ -432,6 +557,33 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     gcTime: GC_MS,
     retry: false,
   })
+  const raceControlQuery = useQuery({
+    queryKey: ['historical-race-control', session.sessionKey],
+    queryFn: ({ signal }) => getRaceControl(session.sessionKey, signal),
+    staleTime: STALE_MS,
+    gcTime: GC_MS,
+    retry: false,
+  })
+  const aero = useMemo<AeroContext>(
+    () => ({
+      modernRules: new Date(startMs).getUTCFullYear() >= 2026,
+      overtakeChanges: aeroAidChanges(
+        raceControlQuery.data?.items ?? [],
+        'OVERTAKE',
+      ),
+      raceControl: raceControlQuery.isPending
+        ? 'loading'
+        : raceControlQuery.isError
+          ? 'unavailable'
+          : 'ready',
+    }),
+    [
+      raceControlQuery.data,
+      raceControlQuery.isError,
+      raceControlQuery.isPending,
+      startMs,
+    ],
+  )
   const resultsQuery = useQuery({
     queryKey: ['historical-session-results', session.sessionKey],
     queryFn: ({ signal }) => getSessionResults(session.sessionKey, signal),
@@ -538,14 +690,22 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   const driversReady = driversQuery.isSuccess && drivers.length > 0
   const samples = positions.data?.items ?? NO_POSITIONS
   const circuitSamples = circuitPositions.data?.items ?? NO_POSITIONS
+  // Only non-starters are hidden. DNF/DSQ cars raced until they stopped, and
+  // their recorded positions are real.
   const excludedMapDriverNumbers = useMemo(
     () =>
       new Set(
         finalResults
-          .filter((result) => result.dns || result.dnf || result.dsq)
+          .filter((result) => result.dns)
           .map((result) => result.driverNumber),
       ),
     [finalResults],
+  )
+  // DNF cars leave the map once they retire (estimated from their last lap).
+  const retiredAt = useMemo(
+    () =>
+      retirementTimes(sessionLapsQuery.data?.items ?? NO_LAPS, finalResults),
+    [finalResults, sessionLapsQuery.data],
   )
   const validPositionSamples = useMemo(
     () => removeSharedStationaryPositions(samples),
@@ -553,10 +713,12 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   )
   const movingSamples = useMemo(
     () =>
-      validPositionSamples.filter(
-        (sample) => !excludedMapDriverNumbers.has(sample.driverNumber),
-      ),
-    [excludedMapDriverNumbers, validPositionSamples],
+      validPositionSamples.filter((sample) => {
+        if (excludedMapDriverNumbers.has(sample.driverNumber)) return false
+        const retiredMs = retiredAt.get(sample.driverNumber)
+        return retiredMs === undefined || Date.parse(sample.date) < retiredMs
+      }),
+    [excludedMapDriverNumbers, retiredAt, validPositionSamples],
   )
   const positionsByDriver = useMemo(() => {
     const grouped = new Map<number, HistoricalPosition[]>()
@@ -585,8 +747,8 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     samples,
   ])
   const projection = useMemo(
-    () => createTrackProjection(mapReferenceSamples),
-    [mapReferenceSamples],
+    () => createTrackProjection(mapReferenceSamples, mapSize),
+    [mapReferenceSamples, mapSize],
   )
   const paths = useMemo(
     () => toPaths(movingSamples, drivers, projection),
@@ -596,6 +758,116 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     () => toPaths(mapReferenceSamples, drivers, projection),
     [drivers, mapReferenceSamples, projection],
   )
+  // Start/finish: where cars were when their recorded laps began.
+  const startFinish = useMemo(() => {
+    if (!projection || !circuitPositions.isSuccess) return null
+    const marker = startFinishEstimate(
+      sessionLapsQuery.data?.items ?? NO_LAPS,
+      circuitSamples,
+    )
+    if (!marker) return null
+    const at = projection.project(marker.x, marker.y)
+    const ahead = projection.project(
+      marker.x + marker.dx * 50,
+      marker.y + marker.dy * 50,
+    )
+    return {
+      x: at.x,
+      y: at.y,
+      angle: (Math.atan2(ahead.y - at.y, ahead.x - at.x) * 180) / Math.PI,
+    }
+  }, [
+    circuitPositions.isSuccess,
+    circuitSamples,
+    projection,
+    sessionLapsQuery.data,
+  ])
+  // Pit lane: the recorded path of one typical pit stop.
+  const pitLaneCandidates = useMemo(
+    () => pitLaneTraceCandidates(pitStopsQuery.data?.items ?? NO_PIT_STOPS),
+    [pitStopsQuery.data],
+  )
+  const pitLaneTrace = useQuery({
+    queryKey: [
+      'historical-pit-lane-v2',
+      session.sessionKey,
+      pitLaneCandidates[0]?.fromMs,
+    ],
+    queryFn: async ({ signal }) => {
+      // Try up to five stops. Some carry only placeholder coordinates, and
+      // some pit records don't match the car's motion (it never stops), so
+      // each candidate is checked against recorded speed first.
+      for (const candidate of pitLaneCandidates.slice(0, 5)) {
+        const fromUtc = utc(candidate.fromMs)
+        const toUtc = utc(candidate.toMs)
+        const speeds = (
+          await getCarData(
+            session.sessionKey,
+            candidate.driverNumber,
+            fromUtc,
+            toUtc,
+            signal,
+          )
+        ).items
+          .map((row) => ({ t: Date.parse(row.date), speed: row.speed }))
+          .filter(
+            (row): row is { t: number; speed: number } =>
+              row.speed != null && Number.isFinite(row.t),
+          )
+          .sort((a, b) => a.t - b.t)
+        const sortedSpeeds = speeds
+          .map((row) => row.speed)
+          .sort((a, b) => a - b)
+        const medianSpeed = sortedSpeeds[Math.floor(sortedSpeeds.length / 2)]
+        // A real stop: the car halts in its box and otherwise runs at the
+        // pit limiter (80 km/h at most circuits, 60 at a few).
+        if (!sortedSpeeds.length || sortedSpeeds[0] > 5 || medianSpeed > 95)
+          continue
+        // Keep only the speed-limited stretch: the pit lane itself.
+        const limited = speeds.filter((row) => row.speed <= 90)
+        const fromMs = limited[0].t
+        const toMs = limited[limited.length - 1].t
+        const response = await getRacePositions(
+          session.sessionKey,
+          fromUtc,
+          toUtc,
+          signal,
+        )
+        const trace = removeSharedStationaryPositions(response.items)
+          .filter((row) => {
+            const t = Date.parse(row.date)
+            return (
+              row.driverNumber === candidate.driverNumber &&
+              row.x != null &&
+              row.y != null &&
+              !(row.x === -8325 && row.y === -7058) &&
+              t >= fromMs &&
+              t <= toMs
+            )
+          })
+          .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+        // Most of the visit must have real positions.
+        if (trace.length >= 30) return trace
+      }
+      return NO_POSITIONS
+    },
+    enabled: pitLaneCandidates.length > 0,
+    staleTime: STALE_MS,
+    gcTime: GC_MS,
+    retry: false,
+  })
+  const pitLane = useMemo(() => {
+    const trace = pitLaneTrace.data ?? NO_POSITIONS
+    if (!projection || trace.length === 0) return null
+    const points = trace.map((row) => projection.project(row.x!, row.y!))
+    const middle = points[Math.floor(points.length / 2)]
+    return {
+      points: points
+        .map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+        .join(' '),
+      label: { x: middle.x, y: middle.y - 14 },
+    }
+  }, [pitLaneTrace.data, projection])
   const changes = useMemo(
     () =>
       [...(classification.data?.items ?? NO_CLASSIFICATION)].sort(
@@ -614,6 +886,16 @@ export function RaceReplay({ session }: { session: RaceSession }) {
       ),
     [classificationIndex, changes, drivers, startMs],
   )
+  const leaderNumber = orderedDrivers.find(({ position }) => position === 1)
+    ?.driver.driverNumber
+  const changeTowerMode = useCallback((mode: TowerMode) => {
+    setTowerMode(mode)
+    try {
+      localStorage.setItem(TOWER_MODE_KEY, mode)
+    } catch {
+      // Storage can be blocked; the choice then lasts for this visit only.
+    }
+  }, [])
   const normalizedCarData = useMemo(
     () => normalizeCarSamples(carData.data?.items ?? NO_CAR_DATA),
     [carData.data],
@@ -628,6 +910,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
       }),
     [sessionLapsQuery.data],
   )
+  const timedLaps = useMemo(() => timedLapsByDriver(allLaps), [allLaps])
   const stints = useMemo(
     () =>
       [...(stintsQuery.data?.items ?? NO_STINTS)].sort(
@@ -637,16 +920,52 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     [stintsQuery.data],
   )
   const pitStops = pitStopsQuery.data?.items ?? NO_PIT_STOPS
+  const raceControlEvents = useMemo(
+    () => trackStatusEvents(raceControlQuery.data?.items ?? []),
+    [raceControlQuery.data],
+  )
+  // Default rival: the car ahead in the running order, or behind for P1.
+  const defaultRival = useMemo(() => {
+    const index = orderedDrivers.findIndex(
+      ({ driver }) => driver.driverNumber === selectedDriver?.driverNumber,
+    )
+    if (index < 0) return null
+    return (
+      orderedDrivers[index > 0 ? index - 1 : index + 1]?.driver.driverNumber ??
+      null
+    )
+  }, [orderedDrivers, selectedDriver?.driverNumber])
+  const compareContext = useMemo(
+    () => ({
+      drivers,
+      laps: allLaps,
+      pitStops,
+      events: raceControlEvents,
+      defaultRival,
+      retiredAt,
+    }),
+    [allLaps, defaultRival, drivers, pitStops, raceControlEvents, retiredAt],
+  )
   const timelineEvents = useMemo(
     () =>
-      timelineEventsForDriver(
-        selectedDriver?.driverNumber,
-        allLaps,
-        pitStops,
-        startMs,
-        durationMs,
-      ),
-    [allLaps, durationMs, pitStops, selectedDriver?.driverNumber, startMs],
+      [
+        ...timelineEventsForDriver(
+          selectedDriver?.driverNumber,
+          allLaps,
+          pitStops,
+          startMs,
+          durationMs,
+        ),
+        ...raceControlTimelineEvents(raceControlEvents, startMs, durationMs),
+      ].sort((a, b) => a.timeMs - b.timeMs),
+    [
+      allLaps,
+      durationMs,
+      pitStops,
+      raceControlEvents,
+      selectedDriver?.driverNumber,
+      startMs,
+    ],
   )
   const eventClusters = useMemo(
     () => clusterTimelineEvents(timelineEvents, durationMs, timelineWidth),
@@ -715,19 +1034,47 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     return () => clock.dispose()
   }, [clock])
 
+  // Races and sprints open just before lights out: the earliest recorded lap 1
+  // start. The formation lap stays reachable on the timeline.
+  const lightsOutElapsedMs = useMemo(() => {
+    if (!/race|sprint/i.test(session.sessionType)) return null
+    let earliest = Infinity
+    for (const lap of allLaps) {
+      if (lap.lapNumber !== 1 || !lap.dateStart) continue
+      const lapStartMs = Date.parse(lap.dateStart)
+      if (Number.isFinite(lapStartMs)) earliest = Math.min(earliest, lapStartMs)
+    }
+    const elapsed = earliest - startMs
+    return Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= durationMs
+      ? elapsed
+      : null
+  }, [allLaps, durationMs, session.sessionType, startMs])
+  const firstSampleElapsedMs = useMemo(() => {
+    const firstSampleMs = movingSamples.length
+      ? Date.parse(movingSamples[0].date)
+      : NaN
+    return Number.isFinite(firstSampleMs)
+      ? Math.max(0, firstSampleMs - startMs)
+      : null
+  }, [movingSamples, startMs])
+  const lapsSettled = sessionLapsQuery.isSuccess || sessionLapsQuery.isError
+  const replayStartElapsedMs =
+    lightsOutElapsedMs !== null
+      ? lightsOutElapsedMs
+      : lapsSettled
+        ? firstSampleElapsedMs
+        : null
+
   useEffect(() => {
     if (
       initialSampleSeekApplied.current ||
-      !positions.isSuccess ||
-      movingSamples.length === 0 ||
+      replayStartElapsedMs === null ||
       clock.getSnapshot().elapsedMs !== 0
     )
       return
-    const firstSampleMs = Date.parse(movingSamples[0].date)
-    if (!Number.isFinite(firstSampleMs)) return
     initialSampleSeekApplied.current = true
-    clock.seek(Math.max(0, firstSampleMs - startMs))
-  }, [clock, movingSamples, positions.isSuccess, startMs])
+    clock.seek(replayStartElapsedMs)
+  }, [clock, replayStartElapsedMs])
 
   useEffect(() => {
     const unsubscribe = clock.subscribe((snapshot) => {
@@ -763,11 +1110,73 @@ export function RaceReplay({ session }: { session: RaceSession }) {
         const driverLap = lapAt(allLaps, driverNumber, snapshot.timestampMs)
         const stint = reading.stint
         const compound = stint?.compound?.toUpperCase() ?? ''
-        node.textContent = compound ? compound.slice(0, 1) : '—'
-        node.dataset.compound = compound
-        node.title = compound
-          ? `${compound} tyre · ${reading.certainty === 'at-playhead' ? `lap ${driverLap?.lapNumber ?? '—'}` : reading.certainty === 'starting' ? 'starting stint' : 'last reported'} · stint ${stint?.stintNumber ?? '—'}`
-          : 'Tyre compound unavailable at this replay time'
+        const letter = node.lastElementChild as HTMLElement | null
+        if (letter) setText(letter, compound ? compound.slice(0, 1) : '—')
+        setData(node, 'compound', compound)
+        setTitle(
+          node,
+          compound
+            ? `${compound} tyre · ${reading.certainty === 'at-playhead' ? `lap ${driverLap?.lapNumber ?? '—'}` : reading.certainty === 'starting' ? 'starting stint' : 'last reported'} · stint ${stint?.stintNumber ?? '—'}`
+            : 'Tyre compound unavailable at this replay time',
+        )
+      }
+      // Timing columns. Purple marks the fastest lap of the race so far,
+      // green a driver's personal best, as on the broadcast.
+      let overallBest = Infinity
+      const lapTiming = new Map<number, ReturnType<typeof lapTimingAt>>()
+      for (const [driverNumber, laps] of timedLaps) {
+        const timing = lapTimingAt(laps, snapshot.timestampMs)
+        lapTiming.set(driverNumber, timing)
+        if (timing.best)
+          overallBest = Math.min(overallBest, timing.best.lapDuration!)
+      }
+      for (const [driverNumber, node] of timingNodes.current) {
+        const [intervalCell, gapCell, lastCell, bestCell] =
+          node.children as HTMLCollectionOf<HTMLElement>
+        if (!bestCell) continue
+        const gap = intervalAt(
+          intervals.get(driverNumber),
+          snapshot.timestampMs,
+        )
+        const isLeader = !gap && driverNumber === leaderNumber
+        setText(
+          intervalCell,
+          isLeader
+            ? 'Leader'
+            : gap
+              ? formatGap(gap.intervalSeconds, gap.intervalLaps)
+              : '—',
+        )
+        setText(
+          gapCell,
+          isLeader
+            ? '—'
+            : gap
+              ? formatGap(gap.gapToLeaderSeconds, gap.gapToLeaderLaps)
+              : '—',
+        )
+        const { last, best } = lapTiming.get(driverNumber) ?? {
+          last: null,
+          best: null,
+        }
+        setText(lastCell, formatLapTime(last?.lapDuration))
+        setText(bestCell, formatLapTime(best?.lapDuration))
+        setData(
+          lastCell,
+          'best',
+          !last
+            ? ''
+            : last.lapDuration === overallBest
+              ? 'overall'
+              : last === best
+                ? 'personal'
+                : '',
+        )
+        setData(
+          bestCell,
+          'best',
+          best && best.lapDuration === overallBest ? 'overall' : '',
+        )
       }
       let selectedStatus = 'LOADING'
       let selectedStatusCode = 'loading'
@@ -776,49 +1185,53 @@ export function RaceReplay({ session }: { session: RaceSession }) {
         const status =
           positions.isPending || pitStopsQuery.isPending
             ? 'LOADING'
-            : replayStatusAt(
-                driverNumber,
-                snapshot.timestampMs,
-                positionsByDriver.get(driverNumber) ?? NO_POSITIONS,
-                pitStops,
-                result,
-              )
+            : (retiredAt.get(driverNumber) ?? Infinity) <= snapshot.timestampMs
+              ? 'DNF'
+              : replayStatusAt(
+                  driverNumber,
+                  snapshot.timestampMs,
+                  positionsByDriver.get(driverNumber) ?? NO_POSITIONS,
+                  pitStops,
+                  result,
+                )
         const finalResult = finalResultStatus(result)
-        node.textContent =
+        setText(
+          node,
           status === 'ON TRACK'
             ? 'TRACK'
             : status === 'PIT LANE'
               ? 'PIT'
               : status === 'DNF'
                 ? 'DNF*'
-                : status
-        node.dataset.status = status.toLowerCase().replaceAll(' ', '-')
-        node.dataset.result = finalResult ?? ''
-        node.title =
+                : status,
+        )
+        setData(node, 'status', status.toLowerCase().replaceAll(' ', '-'))
+        setData(node, 'result', finalResult ?? '')
+        setTitle(
+          node,
           status === 'DNS'
             ? 'Did not start · final session result'
             : status === 'DNF'
-              ? 'DNF in the final classification · OpenF1 does not provide the exact retirement timestamp'
+              ? 'Retired · estimated from the last recorded lap; OpenF1 has no retirement timestamp'
               : status === 'DSQ'
                 ? 'Disqualified in the final classification'
                 : status === 'PIT LANE'
                   ? 'Inside the recorded pit lane visit interval'
                   : finalResult
                     ? `${status} at playhead · ${finalResult} final result`
-                    : `${status} at replay playhead`
+                    : `${status} at replay playhead`,
+        )
         if (selectedDriver?.driverNumber === driverNumber)
           selectedStatusCode = status.toLowerCase().replaceAll(' ', '-')
         if (selectedDriver?.driverNumber === driverNumber)
           selectedStatus =
             status === 'DNS'
               ? 'DNS · DID NOT START'
-              : status === 'DNF' || status === 'DSQ'
-                ? `${status} · FINAL RESULT`
-                : status === 'PIT LANE'
-                  ? `PIT LANE · RECORDED VISIT${finalResult ? ` · ${finalResult} FINAL` : ''}`
-                  : finalResult
-                    ? `${status} · ${finalResult} FINAL`
-                    : status
+              : status === 'DNF'
+                ? 'RETIRED · DNF'
+                : status === 'DSQ'
+                  ? 'DSQ · FINAL RESULT'
+                  : status
       }
       if (selectedStatusRef.current) {
         selectedStatusRef.current.textContent = selectedStatus
@@ -835,6 +1248,11 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             )
           : null
         const compound = reading?.stint?.compound
+        if (selectedTyreIconRef.current) {
+          const colour = compoundColour(stintsQuery.isPending ? null : compound)
+          if (selectedTyreIconRef.current.style.color !== colour)
+            selectedTyreIconRef.current.style.color = colour
+        }
         selectedTyreRef.current.textContent = stintsQuery.isPending
           ? 'Loading'
           : compound
@@ -879,6 +1297,9 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     changes,
     clock,
     durationMs,
+    intervals,
+    leaderNumber,
+    timedLaps,
     finalResults,
     resultsByDriver,
     pitStops,
@@ -889,6 +1310,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     stints,
     stintsQuery.isPending,
     totalLapsByDriver,
+    retiredAt,
   ])
 
   const seek = useCallback((value: number) => clock.seek(value), [clock])
@@ -900,6 +1322,83 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     () => void pitStopsQuery.refetch(),
     [pitStopsQuery],
   )
+  const canPlay = geometryReady || samples.length > 0
+  const updateMapSize = useCallback(
+    (next: MapSize) =>
+      setMapSize((current) =>
+        current.width === next.width && current.height === next.height
+          ? current
+          : next,
+      ),
+    [],
+  )
+  const restart = useCallback(() => {
+    clock.pause()
+    clock.seek(replayStartElapsedMs ?? 0)
+  }, [clock, replayStartElapsedMs])
+
+  // Transport shortcuts. Ignored while typing or while a native control
+  // (scrubber, select, button) already handles the key itself.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      // Esc always leaves full screen, whatever has focus.
+      if (event.key === 'Escape') {
+        setImmersive(false)
+        return
+      }
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey) return
+      if (event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (
+        target?.closest(
+          'input, select, textarea, button, [contenteditable], [role="dialog"]',
+        )
+      )
+        return
+      const step = event.shiftKey ? 60_000 : 10_000
+      const { elapsedMs, isPlaying } = clock.getSnapshot()
+      if (event.key === ' ' || event.key === 'k') {
+        if (!isPlaying && !canPlay) return
+        event.preventDefault()
+        if (isPlaying) clock.pause()
+        else clock.play()
+      } else if (event.key === 'ArrowLeft' || event.key === 'j') {
+        event.preventDefault()
+        clock.seek(elapsedMs - step)
+      } else if (event.key === 'ArrowRight' || event.key === 'l') {
+        event.preventDefault()
+        clock.seek(elapsedMs + step)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        restart()
+      } else if (event.key === 'f' || event.key === 'F') {
+        event.preventDefault()
+        setImmersive((value) => !value)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canPlay, clock, restart])
+
+  // Full-screen replay: the section covers the viewport (works everywhere),
+  // and native browser full screen hides the browser chrome where allowed.
+  useEffect(() => {
+    if (!immersive) return
+    const root = document.documentElement
+    root.classList.add('replay-immersive')
+    if (document.fullscreenEnabled && !document.fullscreenElement)
+      root.requestFullscreen().catch(() => undefined)
+    function onFullscreenChange() {
+      if (!document.fullscreenElement) setImmersive(false)
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
+      root.classList.remove('replay-immersive')
+      if (document.fullscreenElement)
+        document.exitFullscreen().catch(() => undefined)
+    }
+  }, [immersive])
 
   if (!validDuration) {
     return (
@@ -921,88 +1420,107 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     !(driversQuery.isSuccess && drivers.length === 0) &&
     !(positions.isSuccess && movingSamples.length === 0)
 
-  return (
-    <section className="race-replay panel" aria-label="Race replay">
-      <header className="race-replay-heading">
-        <div className="race-replay-title">
-          <span className="replay-live-state">
-            <i /> HISTORICAL REPLAY
-          </span>
-          <h2>{session.sessionName}</h2>
-          <p>
-            {driversReady ? `${drivers.length} drivers` : 'Driver data loading'}{' '}
-            · OpenF1 recorded positions where available
-          </p>
-        </div>
-        <span className="replay-source">
-          {session.sessionType.toUpperCase()} · OPENF1
-        </span>
-      </header>
+  // Once every stage is ready the strip only repeats "READY"; hide it.
+  const loadComplete =
+    canShowProgress &&
+    driversReady &&
+    geometryReady &&
+    lapAndTyreReady &&
+    positions.isSuccess &&
+    !circuitPositions.isPending
 
-      <div className="replay-progress-strip">
-        <LoadStage
-          label="Drivers"
-          state={
-            driversQuery.isError
-              ? 'failed'
-              : driversQuery.isPending
-                ? 'loading'
-                : drivers.length
+  return (
+    <section
+      className={`race-replay panel ${immersive ? 'immersive' : ''}`}
+      aria-label="Race replay"
+    >
+      {loadComplete ? null : (
+        <div className="replay-progress-strip">
+          <LoadStage
+            label="Drivers"
+            state={
+              driversQuery.isError
+                ? 'failed'
+                : driversQuery.isPending
+                  ? 'loading'
+                  : drivers.length
+                    ? 'ready'
+                    : 'empty'
+            }
+          />
+          <LoadStage
+            label="Position samples"
+            state={
+              positions.isError
+                ? 'failed'
+                : positions.isPending
+                  ? 'loading'
+                  : movingSamples.length
+                    ? 'ready'
+                    : 'empty'
+            }
+          />
+          <LoadStage
+            label="Circuit trace"
+            state={
+              circuitPositions.isError
+                ? geometryReady
                   ? 'ready'
-                  : 'empty'
-          }
-        />
-        <LoadStage
-          label="Position samples"
-          state={
-            positions.isError
-              ? 'failed'
-              : positions.isPending
-                ? 'loading'
-                : movingSamples.length
-                  ? 'ready'
-                  : 'empty'
-          }
-        />
-        <LoadStage
-          label="Circuit trace"
-          state={
-            circuitPositions.isError
-              ? geometryReady
-                ? 'ready'
-                : 'failed'
-              : circuitPositions.isPending || driversQuery.isPending
-                ? 'waiting'
-                : geometryReady
-                  ? 'ready'
-                  : 'empty'
-          }
-        />
-        <LoadStage
-          label="Lap & tyre data"
-          state={
-            sessionLapsQuery.isError || stintsQuery.isError
-              ? 'failed'
-              : sessionLapsQuery.isPending || stintsQuery.isPending
-                ? 'loading'
-                : allLaps.length > 0 || stints.length > 0
-                  ? 'ready'
-                  : 'empty'
-          }
-        />
-        <span className="load-progress-value" aria-live="polite">
-          {canShowProgress
-            ? `${geometryReady && !positions.isPending ? 100 : Math.min(progress, 95)}%`
-            : geometryReady
-              ? 'PARTIAL'
-              : 'PARTIAL'}
-        </span>
-      </div>
+                  : 'failed'
+                : circuitPositions.isPending || driversQuery.isPending
+                  ? 'waiting'
+                  : geometryReady
+                    ? 'ready'
+                    : 'empty'
+            }
+          />
+          <LoadStage
+            label="Lap & tyre data"
+            state={
+              sessionLapsQuery.isError || stintsQuery.isError
+                ? 'failed'
+                : sessionLapsQuery.isPending || stintsQuery.isPending
+                  ? 'loading'
+                  : allLaps.length > 0 || stints.length > 0
+                    ? 'ready'
+                    : 'empty'
+            }
+          />
+          <span className="load-progress-value" aria-live="polite">
+            {canShowProgress
+              ? `${geometryReady && !positions.isPending ? 100 : Math.min(progress, 95)}%`
+              : geometryReady
+                ? 'PARTIAL'
+                : 'PARTIAL'}
+          </span>
+        </div>
+      )}
 
       <div className="race-replay-workspace">
-        <aside className="race-tower" aria-label="Running order">
+        <aside
+          className="race-tower"
+          aria-label="Running order"
+          data-mode={towerMode}
+        >
           <div className="tower-title">
             <span>CLASSIFICATION</span>
+            <div
+              className="tower-mode-switch"
+              role="radiogroup"
+              aria-label="Tower columns"
+            >
+              {(['timing', 'compact'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={towerMode === mode}
+                  onClick={() => changeTowerMode(mode)}
+                >
+                  {mode === 'timing' ? 'Timing' : 'Compact'}
+                </button>
+              ))}
+            </div>
             <strong>
               {driversReady ? String(drivers.length).padStart(2, '0') : '—'}
             </strong>
@@ -1011,6 +1529,12 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             <strong>POS</strong>
             <span>DRIVER</span>
             <span>TYRE</span>
+            <span className="race-tower-timing-heading">
+              <span>INT</span>
+              <span>GAP</span>
+              <span>LAST</span>
+              <span>BEST</span>
+            </span>
             <span>STATUS</span>
             <span aria-label="Final result" />
           </div>
@@ -1067,9 +1591,24 @@ export function RaceReplay({ session }: { session: RaceSession }) {
                 }}
                 aria-label={`Tyre compound for ${driver.nameAcronym}`}
               >
-                {driver.driverNumber === selectedDriver?.driverNumber
-                  ? (selectedStint?.compound?.slice(0, 1) ?? '—')
-                  : '—'}
+                <TyreGraphic />
+                <b>
+                  {driver.driverNumber === selectedDriver?.driverNumber
+                    ? (selectedStint?.compound?.slice(0, 1) ?? '—')
+                    : '—'}
+                </b>
+              </span>
+              <span
+                className="race-driver-timing"
+                ref={(node) => {
+                  if (node) timingNodes.current.set(driver.driverNumber, node)
+                  else timingNodes.current.delete(driver.driverNumber)
+                }}
+              >
+                <span title="Interval to the car ahead">—</span>
+                <span title="Gap to the leader">—</span>
+                <span title="Last completed lap">—</span>
+                <span title="Best lap so far">—</span>
               </span>
               <span
                 className="race-driver-status"
@@ -1109,6 +1648,11 @@ export function RaceReplay({ session }: { session: RaceSession }) {
           clock={clock}
           paths={paths}
           circuitPaths={circuitPaths}
+          startFinish={startFinish}
+          pitLane={pitLane}
+          pitLaneMissing={
+            pitLaneTrace.isSuccess && pitLaneTrace.data.length === 0
+          }
           pitStops={pitStops}
           drivers={drivers}
           selectedDriver={selectedDriver}
@@ -1126,41 +1670,37 @@ export function RaceReplay({ session }: { session: RaceSession }) {
           circuitPending={circuitPositions.isPending}
           onRetry={retryPositions}
           onSelectDriver={setSelectedNumber}
+          size={mapSize}
+          onResize={updateMapSize}
+          raceControlEvents={raceControlEvents}
         />
 
         <aside className="telemetry-rail" aria-label="Selected car telemetry">
-          <div className="telemetry-driver">
-            <span
-              style={{
-                background: selectedDriver
-                  ? teamColor(selectedDriver.teamColour)
-                  : '#777',
-              }}
-            />
-            <div>
-              <small>
-                CAR {selectedDriver?.driverNumber ?? '—'} ·{' '}
-                {selectedDriver?.teamName ?? '—'}
-              </small>
-              <strong>{selectedDriver?.fullName ?? 'Select a driver'}</strong>
-              <em>{selectedDriver?.nameAcronym ?? '—'}</em>
-            </div>
-          </div>
+          <DriverCard driver={selectedDriver} />
           <div className="telemetry-session-state">
             <span>
               STATUS <b ref={selectedStatusRef}>NO DATA</b>
             </span>
             <span>
               TYRE{' '}
-              <b ref={selectedTyreRef}>
-                {stintsQuery.isPending
-                  ? 'Loading'
-                  : selectedStint?.compound
-                    ? selectedTyre.certainty === 'at-playhead'
-                      ? selectedStint.compound
-                      : `${selectedStint.compound} · ${selectedTyre.certainty === 'starting' ? 'STARTING' : 'LAST REPORTED'}`
-                    : 'Unavailable'}
-              </b>
+              <span className="selected-tyre">
+                <i
+                  className="selected-tyre-icon"
+                  ref={selectedTyreIconRef}
+                  style={{ color: compoundColour(selectedStint?.compound) }}
+                >
+                  <TyreGraphic />
+                </i>
+                <b ref={selectedTyreRef}>
+                  {stintsQuery.isPending
+                    ? 'Loading'
+                    : selectedStint?.compound
+                      ? selectedTyre.certainty === 'at-playhead'
+                        ? selectedStint.compound
+                        : `${selectedStint.compound} · ${selectedTyre.certainty === 'starting' ? 'STARTING' : 'LAST REPORTED'}`
+                      : 'Unavailable'}
+                </b>
+              </span>
             </span>
           </div>
           {carData.isError && selectedFinalStatus !== 'DNS' ? (
@@ -1181,7 +1721,13 @@ export function RaceReplay({ session }: { session: RaceSession }) {
               No telemetry samples were returned for this driver and window.
             </p>
           ) : null}
-          <SpeedInstrument samples={telemetrySamples} clock={clock} />
+          <TelemetryPanel
+            samples={telemetrySamples}
+            clock={clock}
+            aero={aero}
+            selected={selectedDriver}
+            compare={compareContext}
+          />
           <div className="telemetry-lap-line">
             <span ref={lapRef}>0:00 elapsed</span>
             <strong ref={lapTimeRef}>
@@ -1273,7 +1819,6 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             )}
             <small>Click a stop to seek to its estimated lane entry.</small>
           </section>
-          <TelemetryDetails samples={telemetrySamples} clock={clock} />
           <p className="telemetry-footnote">
             Recorded values at the replay timestamp. Tyre compound and final
             classification depend on session coverage.
@@ -1305,11 +1850,17 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             <Button
               size="small"
               variant="secondary"
-              aria-label="Restart replay"
-              onClick={() => {
-                clock.pause()
-                seek(0)
-              }}
+              aria-label={
+                lightsOutElapsedMs !== null
+                  ? 'Restart from lights out'
+                  : 'Restart replay'
+              }
+              title={
+                lightsOutElapsedMs !== null
+                  ? 'Restart from lights out (Home)'
+                  : 'Restart (Home)'
+              }
+              onClick={restart}
             >
               <RotateCcw size={14} aria-hidden="true" />
             </Button>
@@ -1318,6 +1869,8 @@ export function RaceReplay({ session }: { session: RaceSession }) {
               variant="secondary"
               className="race-skip-control"
               aria-label="Back 10 seconds"
+              aria-keyshortcuts="ArrowLeft"
+              title="Back 10 s (←, Shift+← for 60 s)"
               onClick={() => seek(clock.getSnapshot().elapsedMs - 10_000)}
             >
               <SkipBack size={16} aria-hidden="true" />
@@ -1328,7 +1881,10 @@ export function RaceReplay({ session }: { session: RaceSession }) {
               variant="default"
               className="race-play-control"
               aria-label={playing ? 'Pause replay' : 'Play replay'}
-              disabled={!positions.data?.items.length}
+              aria-keyshortcuts="Space"
+              title={playing ? 'Pause (Space)' : 'Play (Space)'}
+              // Pausing must always work, even while a new window loads.
+              disabled={!playing && !canPlay}
               onClick={() => (playing ? clock.pause() : clock.play())}
             >
               {playing ? (
@@ -1342,6 +1898,8 @@ export function RaceReplay({ session }: { session: RaceSession }) {
               variant="secondary"
               className="race-skip-control"
               aria-label="Forward 10 seconds"
+              aria-keyshortcuts="ArrowRight"
+              title="Forward 10 s (→, Shift+→ for 60 s)"
               onClick={() => seek(clock.getSnapshot().elapsedMs + 10_000)}
             >
               <SkipForward size={16} aria-hidden="true" />
@@ -1406,13 +1964,27 @@ export function RaceReplay({ session }: { session: RaceSession }) {
                 )}
               </select>
             </label>
+            <Button
+              size="small"
+              variant="secondary"
+              className="race-fullscreen-control"
+              aria-pressed={immersive}
+              aria-keyshortcuts="F"
+              aria-label={immersive ? 'Exit full screen' : 'Full screen'}
+              title={
+                immersive ? 'Exit full screen (F or Esc)' : 'Full screen (F)'
+              }
+              onClick={() => setImmersive((value) => !value)}
+            >
+              {immersive ? (
+                <Minimize2 size={16} aria-hidden="true" />
+              ) : (
+                <Maximize2 size={16} aria-hidden="true" />
+              )}
+            </Button>
           </div>
         </div>
         <div className="race-timeline-area">
-          <div className="race-timeline-labels">
-            <span>SESSION START</span>
-            <span>SESSION END</span>
-          </div>
           <div className="race-timeline-rail" ref={timelineRef}>
             <div className="race-timeline-base" />
             <div ref={timelineProgressRef} className="race-timeline-progress" />
@@ -1446,7 +2018,15 @@ export function RaceReplay({ session }: { session: RaceSession }) {
                             ? 'IN'
                             : event.kind === 'pit-exit'
                               ? 'OUT'
-                              : 'P'}
+                              : event.kind === 'flag-yellow'
+                                ? 'Y'
+                                : event.kind === 'flag-red'
+                                  ? 'R'
+                                  : event.kind === 'safety-car'
+                                    ? event.label === 'Safety car'
+                                      ? 'SC'
+                                      : 'VSC'
+                                    : 'P'}
                       </span>
                     </button>
                   )
@@ -1535,7 +2115,13 @@ export function RaceReplay({ session }: { session: RaceSession }) {
                         ? 'PIT IN · EST.'
                         : kind === 'pit-exit'
                           ? 'PIT OUT · EST.'
-                          : 'PIT STOP'}
+                          : kind === 'flag-yellow'
+                            ? 'YELLOW FLAG'
+                            : kind === 'flag-red'
+                              ? 'RED FLAG'
+                              : kind === 'safety-car'
+                                ? 'SC / VSC'
+                                : 'PIT STOP'}
                   </span>
                 ),
               )}
@@ -1583,12 +2169,7 @@ function PanelLoader({
   label: string
   compact?: boolean
 }) {
-  return (
-    <div className={`panel-loader ${compact ? 'compact' : ''}`} role="status">
-      <F1Tire />
-      <span>{label}…</span>
-    </div>
-  )
+  return <TyreLoader label={label} compact={compact} />
 }
 
 function PanelError({
@@ -1608,26 +2189,6 @@ function PanelError({
   )
 }
 
-function F1Tire() {
-  return (
-    <svg className="f1-tire" viewBox="0 0 72 72" aria-hidden="true">
-      <circle className="tire-outer" cx="36" cy="36" r="31" />
-      <circle className="tire-sidewall" cx="36" cy="36" r="24" />
-      <circle className="tire-rim" cx="36" cy="36" r="13" />
-      <circle className="tire-hub" cx="36" cy="36" r="4" />
-      {Array.from({ length: 8 }, (_, index) => (
-        <path
-          key={index}
-          className="tire-tread"
-          d="M32 5h8l-2 7h-4z"
-          transform={`rotate(${index * 45} 36 36)`}
-        />
-      ))}
-      <path className="tire-mark" d="M35 26l8 9-8 11" />
-    </svg>
-  )
-}
-
 function TrackMap({
   clock,
   paths,
@@ -1643,7 +2204,19 @@ function TrackMap({
   circuitPending,
   onRetry,
   onSelectDriver,
+  size,
+  onResize,
+  raceControlEvents,
+  startFinish,
+  pitLane,
+  pitLaneMissing,
 }: {
+  pitLaneMissing: boolean
+  raceControlEvents: RaceControlEvent[]
+  startFinish: { x: number; y: number; angle: number } | null
+  pitLane: { points: string; label: { x: number; y: number } } | null
+  size: MapSize
+  onResize: (size: MapSize) => void
   clock: ReplayClock
   paths: DriverPath[]
   circuitPaths: DriverPath[]
@@ -1664,6 +2237,28 @@ function TrackMap({
   )
   const [overflowOpen, setOverflowOpen] = useState(false)
   const groupRef = useRef<SVGGElement>(null)
+  const emptyNoteRef = useRef<HTMLParagraphElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
+  const flagBannerRef = useRef<HTMLParagraphElement>(null)
+
+  // Track status from race control: tints the map and names the condition.
+  useEffect(
+    () =>
+      clock.subscribe(({ timestampMs }) => {
+        const status = trackStatusAt(raceControlEvents, timestampMs)
+        const panel = panelRef.current
+        if (panel && panel.dataset.trackStatus !== status.level)
+          panel.dataset.trackStatus = status.level
+        const banner = flagBannerRef.current
+        if (!banner) return
+        const label = trackStatusLabel(status)
+        if (banner.textContent !== label) banner.textContent = label
+        const hidden = label === ''
+        if (banner.hidden !== hidden) banner.hidden = hidden
+      }),
+    [clock, raceControlEvents],
+  )
+  const svgRef = useRef<SVGSVGElement>(null)
   const overflowBadgeRef = useRef<SVGGElement>(null)
   const labelElements = useRef(new Map<number, SVGGElement>())
   const previousOffsets = useRef(new Map<number, { dx: number; dy: number }>())
@@ -1695,6 +2290,27 @@ function TrackMap({
       ),
     [drivers, paths],
   )
+
+  // Match the drawing's aspect ratio to the panel so the circuit fills it.
+  // Width stays fixed in drawing units so stroke and label sizes keep scale.
+  useEffect(() => {
+    const element = svgRef.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      if (width < 1 || height < 1) return
+      // Fewer units on phones so car labels stay legible when scaled down.
+      const units = width < 520 ? 480 : DEFAULT_MAP_SIZE.width
+      const scaled = Math.round((units * height) / width / 10) * 10
+      const next = {
+        width: units,
+        height: Math.max(240, Math.min(scaled, 1200)),
+      }
+      onResize(next)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [onResize])
 
   useEffect(() => {
     const markerNodes = new Map<
@@ -1781,10 +2397,15 @@ function TrackMap({
           selected: driver.driverNumber === selectedDriver?.driverNumber,
         })
       }
+      const emptyNote = emptyNoteRef.current
+      if (emptyNote) {
+        const hidden = targets.length > 0
+        if (emptyNote.hidden !== hidden) emptyNote.hidden = hidden
+      }
       const placements = placeDriverLabels(
         targets,
-        MAP_WIDTH,
-        MAP_HEIGHT,
+        size.width,
+        size.height,
         previousOffsets.current,
       )
       const byDriver = new Map(
@@ -1890,10 +2511,24 @@ function TrackMap({
     pathsByNumber,
     pitStops,
     selectedDriver?.driverNumber,
+    size.height,
+    size.width,
   ])
 
   return (
-    <section className="race-track-panel" aria-label="Circuit replay">
+    <section
+      className="race-track-panel"
+      aria-label="Circuit replay"
+      ref={panelRef}
+      data-track-status="green"
+    >
+      <p
+        className="track-flag-banner"
+        ref={flagBannerRef}
+        role="status"
+        aria-live="polite"
+        hidden
+      />
       <div className="race-track-topline">
         <div>
           <span className="circuit-live-dot" /> CIRCUIT POSITION <b>OPENF1</b>
@@ -1911,8 +2546,9 @@ function TrackMap({
         </span>
       </div>
       <svg
+        ref={svgRef}
         className="race-track-map"
-        viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+        viewBox={`0 0 ${size.width} ${size.height}`}
         role="group"
         aria-label="Circuit map with interactive recorded car positions"
         preserveAspectRatio="xMidYMid meet"
@@ -1959,14 +2595,46 @@ function TrackMap({
             />
           ))}
         </g>
-        {track?.points[0] ? (
+        {pitLane ? (
           <g
-            className="track-window-start"
-            transform={`translate(${track.points[0].x} ${track.points[0].y})`}
-            aria-label="Start of loaded position window"
+            className="pit-lane"
+            aria-label="Pit lane, traced from a recorded pit stop"
           >
-            <circle r="12" />
-            <path d="M-3 -9h6v18h-6zM-3 -9h6M-3 -3h6M-3 3h6M-3 9h6" />
+            <polyline points={pitLane.points} className="pit-lane-edge" />
+            <polyline points={pitLane.points} className="pit-lane-road" />
+            <text
+              className="pit-lane-label"
+              x={pitLane.label.x}
+              y={pitLane.label.y}
+            >
+              PIT
+            </text>
+          </g>
+        ) : null}
+        {startFinish ? (
+          <g
+            className="start-finish"
+            transform={`translate(${startFinish.x} ${startFinish.y}) rotate(${startFinish.angle})`}
+          >
+            <title>Start/finish line, estimated from recorded lap starts</title>
+            <rect
+              className="start-finish-edge"
+              x="-5"
+              y="-17"
+              width="10"
+              height="34"
+              rx="1.5"
+            />
+            {Array.from({ length: 16 }, (_, index) => (
+              <rect
+                key={index}
+                x={-4 + (index % 2) * 4}
+                y={-16 + Math.floor(index / 2) * 4}
+                width="4"
+                height="4"
+                fill={(index + Math.floor(index / 2)) % 2 ? '#111' : '#f4f5f6'}
+              />
+            ))}
           </g>
         ) : null}
         <g ref={groupRef}>
@@ -2095,7 +2763,9 @@ function TrackMap({
       ) : null}
       {(positionsPending || circuitPending || driversPending) && !track ? (
         <div className="track-state">
-          <F1Tire />
+          <span className="tyre-loader-wheel" style={{ color: '#e8002d' }}>
+            <TyreGraphic detailed label="PITLANE" />
+          </span>
           <strong>Preparing the circuit</strong>
           <span>
             {circuitPending
@@ -2131,7 +2801,7 @@ function TrackMap({
           <Flag size={22} />
           <strong>No active cars to display</strong>
           <span>
-            Drivers classified DNS, DNF, or DSQ are hidden from the circuit map.
+            Drivers who did not start are hidden from the circuit map.
           </span>
         </div>
       ) : null}
@@ -2149,394 +2819,26 @@ function TrackMap({
           </span>
         </div>
       ) : null}
+      {track ? (
+        <p className="track-empty-note" ref={emptyNoteRef} role="status" hidden>
+          <strong>No car positions at this moment</strong>
+          <span>
+            OpenF1 may send no usable location while cars are stationary, for
+            example on the grid before lights out. Cars reappear when samples
+            resume.
+          </span>
+        </p>
+      ) : null}
       <div className="circuit-caption">
         <span>LOCAL X / Y · FITTED WITHOUT DISTORTION</span>
-        <span>AMBER P BADGE · ACTIVE PIT LANE VISIT</span>
+        <span>
+          {pitLaneMissing
+            ? 'PIT LANE NOT IN POSITION FEED'
+            : 'AMBER P BADGE · ACTIVE PIT LANE VISIT'}
+        </span>
         <span>POSITION DATA MAY HAVE GAPS OVER 1.5 S</span>
       </div>
     </section>
-  )
-}
-
-function SpeedInstrument({
-  samples,
-  clock,
-}: {
-  samples: HistoricalCarSample[]
-  clock: ReplayClock
-}) {
-  const speedText = useRef<SVGTextElement>(null)
-  const rpmText = useRef<SVGTextElement>(null)
-  const speedArc = useRef<SVGCircleElement>(null)
-  const rpmArc = useRef<SVGCircleElement>(null)
-  const speedNeedle = useRef<SVGLineElement>(null)
-  const throttleSegments = useRef<HTMLSpanElement[]>([])
-  const brakeSegments = useRef<HTMLSpanElement[]>([])
-  const throttleText = useRef<HTMLSpanElement>(null)
-  const brakeText = useRef<HTMLSpanElement>(null)
-  const gearText = useRef<HTMLElement>(null)
-  const drsText = useRef<HTMLSpanElement>(null)
-  const drsBadge = useRef<HTMLDivElement>(null)
-  const sampleStatus = useRef<HTMLElement>(null)
-  const instrumentSvg = useRef<SVGSVGElement>(null)
-  const speedArcLength = 75
-  const rpmArcLength = 72
-  const setSegment = (segments: HTMLSpanElement[], amount: number | null) => {
-    const active =
-      amount === null ? -1 : Math.ceil(Math.max(0, Math.min(amount, 100)) / 10)
-    segments.forEach((segment, index) =>
-      segment.toggleAttribute('data-active', index < active),
-    )
-  }
-
-  useEffect(
-    () =>
-      clock.subscribe(({ timestampMs }) => {
-        const telemetry = telemetryAt(samples, timestampMs)
-        if (instrumentSvg.current) {
-          instrumentSvg.current.setAttribute(
-            'aria-label',
-            `Recorded speed ${telemetry?.speed == null ? 'unavailable' : Math.round(telemetry.speed)} kilometers per hour, throttle ${telemetry?.throttle == null ? 'unavailable' : Math.round(telemetry.throttle)} percent`,
-          )
-        }
-        if (sampleStatus.current)
-          sampleStatus.current.textContent = telemetry
-            ? `SAMPLE ${Math.max(0, (timestampMs - Date.parse(telemetry.date)) / 1_000).toFixed(1)}s`
-            : 'NO SAMPLE'
-        if (speedText.current)
-          speedText.current.textContent =
-            telemetry?.speed == null ? '—' : String(Math.round(telemetry.speed))
-        if (rpmText.current)
-          rpmText.current.textContent =
-            telemetry?.rpm == null
-              ? '—'
-              : Math.round(telemetry.rpm).toLocaleString()
-        if (speedArc.current) {
-          const progress =
-            telemetry?.speed == null
-              ? 0
-              : speedArcLength * Math.max(0, Math.min(telemetry.speed / 360, 1))
-          speedArc.current.style.strokeDasharray = `${progress} ${100 - progress}`
-          speedArc.current.style.strokeDashoffset = '0'
-          speedArc.current.style.opacity = telemetry?.speed == null ? '0' : '1'
-        }
-        if (speedNeedle.current) {
-          const value =
-            telemetry?.speed == null
-              ? null
-              : Math.max(0, Math.min(telemetry.speed / 360, 1))
-          speedNeedle.current.style.opacity = value === null ? '0' : '1'
-          speedNeedle.current.setAttribute(
-            'transform',
-            `rotate(${value === null ? 225 : 225 + value * 270} 200 201)`,
-          )
-        }
-        if (rpmArc.current) {
-          const progress =
-            telemetry?.rpm == null
-              ? 0
-              : rpmArcLength * Math.max(0, Math.min(telemetry.rpm / 15000, 1))
-          rpmArc.current.style.strokeDasharray = `${progress} ${100 - progress}`
-          rpmArc.current.style.strokeDashoffset = '0'
-          rpmArc.current.style.opacity = telemetry?.rpm == null ? '0' : '1'
-        }
-        setSegment(throttleSegments.current, telemetry?.throttle ?? null)
-        setSegment(
-          brakeSegments.current,
-          telemetry?.brake == null ? null : telemetry.brake > 0 ? 100 : 0,
-        )
-        if (throttleText.current)
-          throttleText.current.textContent =
-            telemetry?.throttle == null
-              ? '—'
-              : `${Math.round(telemetry.throttle)}%`
-        if (brakeText.current)
-          brakeText.current.textContent =
-            telemetry?.brake == null ? '—' : telemetry.brake > 0 ? 'ON' : 'OFF'
-        if (gearText.current)
-          gearText.current.textContent =
-            telemetry?.gear == null ? '—' : String(telemetry.gear)
-        if (drsText.current)
-          drsText.current.textContent =
-            telemetry?.drs == null
-              ? 'UNAVAILABLE'
-              : [10, 12, 14].includes(telemetry.drs)
-                ? 'ACTIVE'
-                : 'INACTIVE'
-        if (drsBadge.current)
-          drsBadge.current.dataset.state =
-            telemetry?.drs == null
-              ? 'unavailable'
-              : [10, 12, 14].includes(telemetry.drs)
-                ? 'active'
-                : 'inactive'
-      }),
-    [clock, samples, speedArcLength, rpmArcLength],
-  )
-
-  return (
-    <div className="speed-instrument">
-      <div className="instrument-heading">
-        <span>CAR TELEMETRY</span>
-        <b ref={sampleStatus}>NO SAMPLE</b>
-      </div>
-      <svg
-        ref={instrumentSvg}
-        viewBox="0 0 400 400"
-        role="img"
-        aria-label="Recorded speed unavailable kilometers per hour, throttle unavailable percent"
-      >
-        <defs>
-          <radialGradient id="instrument-face">
-            <stop offset="0" stopColor="#151a20" />
-            <stop offset="0.78" stopColor="#090c10" />
-            <stop offset="1" stopColor="#11161d" />
-          </radialGradient>
-          <filter id="speed-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <circle className="gauge-face" cx="200" cy="201" r="178" />
-        <circle className="gauge-bezel" cx="200" cy="201" r="180" />
-        <circle
-          className="gauge-rail"
-          pathLength="100"
-          cx="200"
-          cy="201"
-          r="164"
-          transform="rotate(135 200 201)"
-          strokeDasharray="75 25"
-        />
-        <circle
-          className="gauge-rail"
-          pathLength="100"
-          cx="200"
-          cy="201"
-          r="150"
-          transform="rotate(135 200 201)"
-          strokeDasharray="75 25"
-        />
-        <circle
-          ref={speedArc}
-          className="gauge-speed"
-          pathLength="100"
-          cx="200"
-          cy="201"
-          r="150"
-          transform="rotate(135 200 201)"
-          strokeDasharray="0 100"
-          strokeDashoffset="0"
-        />
-        {Array.from({ length: 37 }, (_, index) => {
-          const angle = ((135 + index * (270 / 36)) * Math.PI) / 180
-          const major = index % 6 === 0
-          const inner = major ? 128 : index % 3 === 0 ? 132 : 136
-          const outer = 145
-          const x1 = 200 + Math.cos(angle) * inner
-          const y1 = 201 + Math.sin(angle) * inner
-          const x2 = 200 + Math.cos(angle) * outer
-          const y2 = 201 + Math.sin(angle) * outer
-          const value = index * 10
-          const lx = 200 + Math.cos(angle) * 113
-          const ly = 201 + Math.sin(angle) * 113 + 5
-          return (
-            <g key={index}>
-              <line
-                className={major ? 'gauge-tick major' : 'gauge-tick'}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-              />
-              {major ? (
-                <text className="gauge-scale-label" x={lx} y={ly}>
-                  {value === 360 ? '360' : value}
-                </text>
-              ) : null}
-            </g>
-          )
-        })}
-        <line
-          ref={speedNeedle}
-          className="gauge-needle"
-          x1="200"
-          y1="201"
-          x2="200"
-          y2="60"
-        />
-        <circle className="gauge-hub" cx="200" cy="201" r="7" />
-        <circle
-          className="gauge-rpm-rail"
-          pathLength="100"
-          cx="200"
-          cy="201"
-          r="88"
-          transform="rotate(135 200 201)"
-          strokeDasharray="72 28"
-        />
-        {Array.from({ length: 16 }, (_, index) => {
-          const angle = ((135 + index * (270 / 15)) * Math.PI) / 180
-          const major = index % 4 === 0 || index === 15
-          const x1 = 200 + Math.cos(angle) * (major ? 96 : 98)
-          const y1 = 201 + Math.sin(angle) * (major ? 96 : 98)
-          const x2 = 200 + Math.cos(angle) * 104
-          const y2 = 201 + Math.sin(angle) * 104
-          const label = index === 15 ? '15' : String(index)
-          const lx = 200 + Math.cos(angle) * 108
-          const ly = 201 + Math.sin(angle) * 108 + 3
-          return (
-            <g key={`rpm-${index}`}>
-              <line
-                className={major ? 'rpm-tick major' : 'rpm-tick'}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-              />
-              {major ? (
-                <text className="rpm-scale-label" x={lx} y={ly}>
-                  {label}
-                </text>
-              ) : null}
-            </g>
-          )
-        })}
-        <circle
-          ref={rpmArc}
-          className="gauge-rpm-arc"
-          pathLength="100"
-          cx="200"
-          cy="201"
-          r="88"
-          transform="rotate(135 200 201)"
-          strokeDasharray="0 100"
-          strokeDashoffset="0"
-        />
-        <circle className="gauge-inner-face" cx="200" cy="201" r="73" />
-        <text ref={speedText} className="gauge-speed-number" x="200" y="207">
-          —
-        </text>
-        <text className="gauge-speed-unit" x="200" y="230">
-          KM/H
-        </text>
-        <text ref={rpmText} className="gauge-rpm-number" x="200" y="313">
-          —
-        </text>
-        <text className="gauge-rpm-label" x="200" y="329">
-          RPM
-        </text>
-        <text className="gauge-center-caption" x="200" y="261">
-          ENGINE
-        </text>
-        <text className="gauge-arc-label" x="200" y="25">
-          SPEED · KM/H
-        </text>
-      </svg>
-      <div className="gauge-bottom-row">
-        <div
-          className="pedal-gauge throttle-gauge"
-          aria-label="Throttle, percent from 0 to 100"
-        >
-          <div className="pedal-segments">
-            {Array.from({ length: 10 }, (_, i) => (
-              <span
-                key={i}
-                ref={(node) => {
-                  if (node) throttleSegments.current[i] = node
-                }}
-              />
-            ))}
-          </div>
-          <div className="pedal-label">
-            <span>THROTTLE</span>
-            <b ref={throttleText}>—</b>
-          </div>
-          <small>0–100%</small>
-        </div>
-        <div className="gear-plinth">
-          <span>GEAR</span>
-          <b ref={gearText}>—</b>
-        </div>
-        <div className="pedal-gauge brake-gauge" aria-label="Brake state">
-          <div className="pedal-segments">
-            {Array.from({ length: 10 }, (_, i) => (
-              <span
-                key={i}
-                ref={(node) => {
-                  if (node) brakeSegments.current[i] = node
-                }}
-              />
-            ))}
-          </div>
-          <div className="pedal-label">
-            <span>BRAKE</span>
-            <b ref={brakeText}>—</b>
-          </div>
-          <small>RECORDED STATE</small>
-        </div>
-      </div>
-      <div className="drs-readout" ref={drsBadge} data-state="unavailable">
-        <span>DRS</span>
-        <b ref={drsText}>UNAVAILABLE</b>
-      </div>
-    </div>
-  )
-}
-
-function TelemetryDetails({
-  samples,
-  clock,
-}: {
-  samples: HistoricalCarSample[]
-  clock: ReplayClock
-}) {
-  const throttle = useRef<HTMLElement>(null)
-  const brake = useRef<HTMLElement>(null)
-  const sampleAge = useRef<HTMLElement>(null)
-  useEffect(
-    () =>
-      clock.subscribe(({ timestampMs }) => {
-        const item = telemetryAt(samples, timestampMs)
-        if (throttle.current)
-          throttle.current.textContent =
-            item?.throttle == null ? '—' : `${Math.round(item.throttle)}%`
-        if (brake.current)
-          brake.current.textContent =
-            item?.brake == null ? '—' : item.brake > 0 ? 'ON' : 'OFF'
-        if (sampleAge.current)
-          sampleAge.current.textContent = item
-            ? `${Math.max(0, (timestampMs - Date.parse(item.date)) / 1_000).toFixed(1)}s`
-            : '—'
-      }),
-    [clock, samples],
-  )
-  return (
-    <div className="telemetry-grid">
-      <TelemetryValue label="Throttle" ref={throttle} />
-      <TelemetryValue label="Brake" ref={brake} />
-      <TelemetryValue label="Sample age" ref={sampleAge} />
-    </div>
-  )
-}
-
-function TelemetryValue({
-  label,
-  value,
-  ref,
-}: {
-  label: string
-  value?: string
-  ref?: Ref<HTMLElement>
-}) {
-  return (
-    <div className="telemetry-value">
-      <span>{label}</span>
-      <strong ref={ref}>{value ?? '—'}</strong>
-    </div>
   )
 }
 

@@ -1,0 +1,1197 @@
+/* Replay visuals: tyres, loader, driver card and onboard telemetry.
+   Loaded with the replay chunk, after index.css. Selectors are scoped under
+   .pitlane-shell so they win over the older replay layers. */
+
+.pitlane-shell {
+  --ct-surface: #0b0e12;
+  --ct-well: #161a20;
+  --ct-line: #2a3039;
+  --ct-muted: #8b94a0;
+  --ct-text: #eef1f4;
+  --ct-throttle: #2fd16f;
+  --ct-brake: #ff2d3d;
+  --ct-shift: #8a63ff;
+}
+
+/* ---------- Tyres ---------- */
+
+.tyre-graphic {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.tyre-lettering text {
+  font:
+    700 6.4px 'Barlow Condensed',
+    sans-serif;
+}
+
+/* Timing tower: small side-view tyre, compound letter on the hub. */
+.pitlane-shell .race-driver-tyre {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  color: #6b7280;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+.pitlane-shell .race-driver-tyre .tyre-graphic {
+  position: absolute;
+  inset: 0;
+}
+.pitlane-shell .race-driver-tyre .tyre-nut {
+  display: none;
+}
+.pitlane-shell .race-driver-tyre b {
+  position: relative;
+  color: currentColor;
+  font:
+    800 12px/1 'Barlow Condensed',
+    sans-serif;
+  text-shadow: 0 0 3px #000;
+}
+.pitlane-shell .race-driver-tyre[data-compound='SOFT'] {
+  color: #e8002d;
+}
+.pitlane-shell .race-driver-tyre[data-compound='MEDIUM'] {
+  color: #ffd12e;
+}
+.pitlane-shell .race-driver-tyre[data-compound='HARD'] {
+  color: #f0f0ec;
+}
+.pitlane-shell .race-driver-tyre[data-compound='INTERMEDIATE'] {
+  color: #43b02a;
+}
+.pitlane-shell .race-driver-tyre[data-compound='WET'] {
+  color: #2d8ff0;
+}
+
+.selected-tyre {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.selected-tyre-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  font-style: normal;
+}
+
+/* ---------- Loader: a rolling tyre ---------- */
+
+.tyre-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 160px;
+  color: var(--ct-muted);
+  font-size: 12px;
+}
+.tyre-loader.compact {
+  flex-direction: row;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 8px 12px;
+  gap: 10px;
+}
+.tyre-loader-wheel {
+  display: block;
+  width: 72px;
+  height: 72px;
+  animation: tyre-roll 0.9s linear infinite;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+}
+.tyre-loader.compact .tyre-loader-wheel {
+  width: 26px;
+  height: 26px;
+}
+.track-state .tyre-loader-wheel {
+  width: 92px;
+  height: 92px;
+}
+@keyframes tyre-roll {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tyre-loader-wheel {
+    animation: none;
+  }
+}
+
+/* ---------- Driver card ---------- */
+
+.driver-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: end;
+  gap: 14px;
+  margin: -15px -16px 0;
+  padding: 0 16px 0 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--team) 22%, transparent),
+    transparent 70%
+  );
+  border-bottom: 2px solid var(--team);
+}
+.driver-card-portrait {
+  position: relative;
+  height: 118px;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 30%,
+      color-mix(in srgb, var(--team) 85%, white 15%),
+      transparent 70%
+    ),
+    linear-gradient(
+      170deg,
+      var(--team),
+      color-mix(in srgb, var(--team) 30%, #07090c)
+    );
+}
+.driver-card-number {
+  position: absolute;
+  top: -6px;
+  right: 4px;
+  color: rgba(255, 255, 255, 0.22);
+  font:
+    800 64px/1 'Oxanium',
+    sans-serif;
+  letter-spacing: -0.04em;
+}
+.driver-card-portrait img {
+  position: absolute;
+  inset: 6px 0 0;
+  width: 100%;
+  height: calc(100% - 6px);
+  object-fit: cover;
+  object-position: top center;
+}
+.driver-card-initials {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.92);
+  font:
+    700 30px 'Barlow Condensed',
+    sans-serif;
+}
+.driver-card-name {
+  display: grid;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+.driver-card-name span {
+  color: #c9cfd6;
+  font:
+    500 16px/1.1 'Barlow',
+    sans-serif;
+}
+.driver-card-name strong {
+  overflow: hidden;
+  color: #fff;
+  font:
+    700 34px/1 'Barlow Condensed',
+    sans-serif;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.driver-card-name small {
+  margin-top: 4px;
+  color: var(--ct-muted);
+  font-size: 12px;
+}
+
+/* ---------- Onboard telemetry ---------- */
+
+.pitlane-shell .car-telemetry {
+  container-type: inline-size;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  color: var(--ct-text);
+  background: var(--ct-surface);
+  border: 1px solid var(--ct-line);
+  border-radius: 4px;
+}
+.pitlane-shell .car-telemetry .instrument-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ct-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pitlane-shell .car-telemetry .instrument-heading b {
+  color: #9fe3b5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ct-primary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ct-speed {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ct-speed strong {
+  min-width: 3ch;
+  font:
+    700 clamp(40px, 21cqi, 72px) / 0.9 'Oxanium',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+.ct-speed span {
+  color: var(--ct-muted);
+  font:
+    600 16px 'Barlow Condensed',
+    sans-serif;
+}
+.ct-gear {
+  display: grid;
+  flex: none;
+  justify-items: center;
+  width: clamp(52px, 20cqi, 70px);
+  padding: 6px 0 4px;
+  background: var(--ct-well);
+  border: 1px solid var(--ct-line);
+  border-radius: 4px;
+}
+.ct-gear span {
+  color: var(--ct-muted);
+  font-size: 11px;
+}
+.ct-gear strong {
+  font:
+    700 44px/1 'Oxanium',
+    sans-serif;
+}
+
+/* Steering-wheel style shift lights: green, red, then purple. */
+.ct-rpm {
+  display: grid;
+  gap: 6px;
+}
+.ct-lights {
+  display: grid;
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+  gap: 3px;
+}
+.ct-lights span {
+  height: 11px;
+  background: var(--ct-well);
+  border-radius: 2px;
+}
+.ct-lights span[data-on][data-band='low'] {
+  background: var(--ct-throttle);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ct-throttle) 60%, transparent);
+}
+.ct-lights span[data-on][data-band='mid'] {
+  background: var(--ct-brake);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ct-brake) 60%, transparent);
+}
+.ct-lights span[data-on][data-band='high'] {
+  background: var(--ct-shift);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ct-shift) 60%, transparent);
+}
+.ct-rpm-readout {
+  justify-self: end;
+  color: var(--ct-muted);
+  font-size: 12px;
+}
+.ct-rpm-readout b {
+  color: var(--ct-text);
+  font:
+    600 18px 'Oxanium',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.ct-pedals {
+  display: grid;
+  gap: 8px;
+}
+.ct-pedal {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 10px;
+  color: var(--ct-muted);
+  font-size: 12px;
+}
+.ct-pedal b {
+  justify-self: end;
+  color: var(--ct-text);
+  font:
+    600 15px 'Oxanium',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.ct-bar {
+  height: 10px;
+  overflow: hidden;
+  background: var(--ct-well);
+  border-radius: 2px;
+}
+.ct-bar > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  transition: width 90ms linear;
+}
+.ct-throttle-fill {
+  background: var(--ct-throttle);
+}
+.ct-brake-fill {
+  background: var(--ct-brake);
+}
+
+.ct-trace {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ct-line);
+}
+.ct-trace-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ct-muted);
+  font-size: 12px;
+}
+.ct-trace svg {
+  width: 100%;
+  height: 64px;
+  background: var(--ct-well);
+  border-radius: 3px;
+}
+.ct-trace-grid {
+  stroke: var(--ct-line);
+  stroke-dasharray: 3 4;
+  vector-effect: non-scaling-stroke;
+}
+.ct-trace-line {
+  fill: none;
+  stroke: var(--ct-text);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.ct-trace-brake {
+  stroke: var(--ct-brake);
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* DRS pill: overrides the older hexagonal badge. */
+.pitlane-shell .car-telemetry .drs-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 3px 9px;
+  color: var(--ct-muted);
+  font:
+    600 12px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.04em;
+  background: var(--ct-well);
+  border: 1px solid var(--ct-line);
+  border-radius: 999px;
+  clip-path: none;
+  box-shadow: none;
+}
+.pitlane-shell .car-telemetry .drs-readout b {
+  color: var(--ct-text);
+  font: inherit;
+  letter-spacing: inherit;
+}
+.pitlane-shell .car-telemetry .drs-readout[data-state='active'] {
+  color: #04140a;
+  background: var(--ct-throttle);
+  border-color: var(--ct-throttle);
+}
+.pitlane-shell .car-telemetry .drs-readout[data-state='active'] b {
+  color: #04140a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-bar > span {
+    transition: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .driver-card {
+    grid-template-columns: 92px minmax(0, 1fr);
+    margin: -12px -12px 0;
+  }
+  .driver-card-portrait {
+    height: 100px;
+  }
+  .driver-card-name strong {
+    font-size: 28px;
+  }
+}
+
+/* ---------- View switch ---------- */
+
+.telemetry-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+.telemetry-panel .car-telemetry {
+  margin-top: 0;
+}
+.telemetry-view-switch {
+  display: inline-flex;
+  justify-self: end;
+  padding: 3px;
+  background: var(--ct-well);
+  border: 1px solid var(--ct-line);
+  border-radius: 999px;
+}
+.telemetry-view-switch button {
+  min-height: 28px;
+  padding: 0 14px;
+  color: var(--ct-muted);
+  font:
+    600 13px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.04em;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.telemetry-view-switch button[aria-checked='true'] {
+  color: #fff;
+  background: #e10600;
+}
+.telemetry-view-switch button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+/* ---------- Cockpit view ---------- */
+
+.pitlane-shell .cockpit-telemetry {
+  container-type: inline-size;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 14px 12px 16px;
+  color: var(--ct-text);
+  background:
+    radial-gradient(ellipse at 50% 35%, rgba(225, 6, 0, 0.1), transparent 60%),
+    var(--ct-surface);
+  border: 1px solid var(--ct-line);
+  border-radius: 4px;
+}
+.pitlane-shell .cockpit-telemetry .instrument-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ct-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pitlane-shell .cockpit-telemetry .instrument-heading b {
+  color: #9fe3b5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cockpit-dial {
+  width: 100%;
+  max-width: 420px;
+  justify-self: center;
+  overflow: visible;
+}
+.cockpit-face {
+  fill: #0d1015;
+  stroke: #252b33;
+  stroke-width: 1.5;
+}
+.cockpit-rail {
+  fill: none;
+  stroke: #262b33;
+  stroke-width: 22;
+}
+.cockpit-speed-arc {
+  fill: none;
+  stroke-width: 22;
+  transition: stroke-dasharray 90ms linear;
+}
+.cockpit-bezel {
+  fill: none;
+  stroke: #3a414b;
+  stroke-width: 1.5;
+}
+.cockpit-tick {
+  stroke: #6b7380;
+  stroke-width: 1;
+}
+.cockpit-tick.major {
+  stroke: #e9ecef;
+  stroke-width: 3;
+}
+.cockpit-scale {
+  fill: #e9ecef;
+  font:
+    600 17px 'Oxanium',
+    sans-serif;
+  text-anchor: middle;
+}
+.cockpit-tip {
+  stroke: #fff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+}
+.cockpit-speed {
+  fill: #fff;
+  font:
+    800 92px 'Oxanium',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  text-anchor: middle;
+}
+.cockpit-unit {
+  fill: #9aa3ae;
+  font:
+    600 17px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.12em;
+  text-anchor: middle;
+}
+.cockpit-unit.small {
+  font-size: 14px;
+}
+.cockpit-rpm-segment {
+  stroke: #2a3039;
+  stroke-width: 5;
+}
+.cockpit-rpm-segment[data-on] {
+  stroke: #d8dde3;
+}
+.cockpit-rpm-segment[data-on][data-zone='red'] {
+  stroke: #ff2d3d;
+  filter: drop-shadow(0 0 4px rgba(255, 45, 61, 0.8));
+}
+.cockpit-rpm-scale {
+  fill: #9aa3ae;
+  font:
+    600 12px 'Oxanium',
+    sans-serif;
+  text-anchor: middle;
+}
+.cockpit-rpm-scale.red {
+  fill: #ff2d3d;
+}
+.cockpit-rpm {
+  fill: #fff;
+  font:
+    700 34px 'Oxanium',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+
+.cockpit-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(74px, 22cqi, 96px) minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+.cockpit-pedal {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: var(--ct-well);
+  border: 1px solid var(--ct-line);
+  clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%);
+}
+.cockpit-pedal.brake {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 8% 100%);
+}
+.cockpit-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 46px;
+}
+.cockpit-pedal.brake .cockpit-bars {
+  flex-direction: row;
+}
+.cockpit-bars span {
+  flex: 1;
+  background: #262b33;
+  border-radius: 2px 2px 0 0;
+  transform: skewX(-8deg);
+}
+.cockpit-pedal.throttle .cockpit-bars span[data-on] {
+  background: var(--ct-throttle);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ct-throttle) 55%, transparent);
+}
+.cockpit-pedal.brake .cockpit-bars span[data-on] {
+  background: var(--ct-brake);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ct-brake) 55%, transparent);
+}
+.cockpit-pedal-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font:
+    600 13px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cockpit-pedal.throttle .cockpit-pedal-label span {
+  color: var(--ct-throttle);
+}
+.cockpit-pedal.brake .cockpit-pedal-label span {
+  color: var(--ct-brake);
+}
+.cockpit-pedal-label b {
+  font-family: 'Oxanium', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.cockpit-gear {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  aspect-ratio: 1 / 1.1;
+  background: linear-gradient(180deg, #1d222a, #0d1015);
+  border: 1px solid #4a525d;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+.cockpit-gear span {
+  color: #b9c0c8;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cockpit-gear strong {
+  font:
+    800 clamp(40px, 14cqi, 56px) / 1 'Oxanium',
+    sans-serif;
+}
+.cockpit-drs {
+  justify-self: center;
+  min-width: 150px;
+  padding: 7px 26px;
+  color: #59616c;
+  font:
+    800 22px 'Oxanium',
+    sans-serif;
+  letter-spacing: 0.08em;
+  text-align: center;
+  background: #10141a;
+  border: 1px solid #2a3039;
+  clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
+}
+.cockpit-drs[data-state='active'] {
+  color: #57f287;
+  background: rgba(47, 209, 111, 0.16);
+  border-color: #2fd16f;
+  text-shadow: 0 0 10px rgba(87, 242, 135, 0.8);
+}
+.cockpit-drs[data-state='unavailable'] {
+  opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cockpit-speed-arc {
+    transition: none;
+  }
+}
+
+@container (max-width: 380px) {
+  .cockpit-pedal-label {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .cockpit-controls {
+    gap: 6px;
+  }
+}
+
+/* ---------- Aero aids ---------- */
+
+.aero-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.pitlane-shell .car-telemetry .drs-readout[data-state='inactive'] b {
+  color: #ff8a93;
+}
+.cockpit-aero {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.cockpit-drs.aero-chip {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 24px;
+  font-size: 15px;
+}
+.cockpit-drs.aero-chip b {
+  font:
+    600 12px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cockpit-drs[data-state='inactive'] {
+  color: #ff8a93;
+  border-color: #6b2a31;
+}
+
+/* ---------- Full-screen replay ---------- */
+
+.replay-immersive,
+.replay-immersive body {
+  overflow: hidden;
+}
+.pitlane-shell .race-replay.immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.pitlane-shell .race-replay.immersive .race-replay-workspace {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.pitlane-shell .race-replay.immersive .race-control-deck {
+  position: relative;
+  bottom: auto;
+}
+/* Fit the telemetry column to the screen instead of scrolling it. */
+.pitlane-shell .race-replay.immersive .cockpit-dial {
+  max-height: 28dvh;
+}
+.pitlane-shell .race-replay.immersive .driver-card-portrait {
+  height: 100px;
+}
+.pitlane-shell .race-replay.immersive .telemetry-footnote,
+.pitlane-shell .race-replay.immersive .pit-stop-log small {
+  display: none;
+}
+@media (max-width: 980px) {
+  .pitlane-shell .race-replay.immersive .race-replay-workspace {
+    overflow-y: auto;
+  }
+}
+
+/* ---------- Track status from race control ---------- */
+
+.pitlane-shell .race-track-panel::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: '';
+  pointer-events: none;
+  background: transparent;
+  box-shadow: inset 0 0 0 0 transparent;
+  transition:
+    background-color 300ms ease,
+    box-shadow 300ms ease;
+}
+.pitlane-shell .race-track-panel[data-track-status='yellow']::after {
+  background: rgba(255, 209, 46, 0.06);
+  box-shadow: inset 0 0 0 2px rgba(255, 209, 46, 0.35);
+}
+.pitlane-shell .race-track-panel[data-track-status='double-yellow']::after {
+  background: rgba(255, 209, 46, 0.12);
+  box-shadow: inset 0 0 0 3px rgba(255, 209, 46, 0.6);
+}
+.pitlane-shell .race-track-panel[data-track-status='sc']::after,
+.pitlane-shell .race-track-panel[data-track-status='vsc']::after {
+  background: rgba(255, 158, 27, 0.1);
+  box-shadow: inset 0 0 0 3px rgba(255, 158, 27, 0.65);
+}
+.pitlane-shell .race-track-panel[data-track-status='red']::after {
+  background: rgba(232, 0, 45, 0.14);
+  box-shadow: inset 0 0 0 3px rgba(232, 0, 45, 0.75);
+}
+.track-flag-banner {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  z-index: 3;
+  margin: 0;
+  padding: 6px 16px;
+  transform: translateX(-50%);
+  color: #161204;
+  font:
+    700 15px 'Barlow Condensed',
+    sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: #ffd12e;
+  border-radius: 2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.track-flag-banner[hidden] {
+  display: none;
+}
+[data-track-status='sc'] > .track-flag-banner,
+[data-track-status='vsc'] > .track-flag-banner {
+  background: #ff9e1b;
+}
+[data-track-status='red'] > .track-flag-banner {
+  color: #fff;
+  background: #e8002d;
+}
+
+/* Timeline markers for race control */
+.race-timeline-event.flag-yellow,
+.race-timeline-key .flag-yellow i {
+  color: #161204;
+  background: #ffd12e;
+}
+.race-timeline-event.flag-red,
+.race-timeline-key .flag-red i {
+  color: #fff;
+  background: #e8002d;
+}
+.race-timeline-event.safety-car,
+.race-timeline-key .safety-car i {
+  color: #161204;
+  background: #ff9e1b;
+}
+.race-timeline-menu-item.flag-yellow span {
+  color: #ffd12e;
+}
+.race-timeline-menu-item.flag-red span {
+  color: #ff5d70;
+}
+.race-timeline-menu-item.safety-car span {
+  color: #ff9e1b;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pitlane-shell .race-track-panel::after {
+    transition: none;
+  }
+}
+
+/* ---------- Tower timing columns ---------- */
+
+.race-driver-timing,
+.race-tower-timing-heading,
+.tower-mode-switch {
+  display: none;
+}
+@media (min-width: 1121px) {
+  .tower-mode-switch {
+    display: inline-flex;
+    margin-left: auto;
+    margin-right: 10px;
+    padding: 2px;
+    gap: 2px;
+    background: #0b0e12;
+    border: 1px solid #2c323a;
+    border-radius: 6px;
+  }
+  .tower-mode-switch button {
+    padding: 3px 8px;
+    color: #8b949f;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    font: 700 9px/1.2 var(--font-sans, sans-serif);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .tower-mode-switch button:hover {
+    color: #e7eaee;
+  }
+  .tower-mode-switch button[aria-checked='true'] {
+    color: #f4f6f8;
+    background: #262c35;
+  }
+  .tower-mode-switch button:focus-visible {
+    outline: 2px solid #e8002d;
+    outline-offset: 1px;
+  }
+
+  .pitlane-shell .race-replay-workspace:has(.race-tower[data-mode='timing']) {
+    grid-template-columns: 386px minmax(0, 1fr) minmax(360px, 26vw);
+  }
+  .pitlane-shell .race-tower[data-mode='timing'] .race-tower-heading,
+  .pitlane-shell .race-tower[data-mode='timing'] .race-driver-row {
+    grid-template-columns: 20px 38px 22px 50px 56px 58px 58px 34px;
+    gap: 4px;
+  }
+  .pitlane-shell .race-tower[data-mode='timing'] .race-driver-result,
+  .pitlane-shell
+    .race-tower[data-mode='timing']
+    .race-tower-heading
+    > span:last-child {
+    display: none;
+  }
+  .pitlane-shell .race-tower[data-mode='timing'] .race-driver-timing,
+  .pitlane-shell .race-tower[data-mode='timing'] .race-tower-timing-heading {
+    display: contents;
+  }
+  .pitlane-shell
+    .race-tower[data-mode='timing']
+    .race-tower-timing-heading
+    > span {
+    display: block;
+    text-align: right;
+  }
+  .pitlane-shell .race-tower[data-mode='timing'] .race-driver-timing > span {
+    overflow: hidden;
+    color: #c9ced5;
+    font: 600 12px/1 var(--font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    text-align: right;
+    white-space: nowrap;
+  }
+  /* Interval is the headline number; gap and lap times are secondary. */
+  .pitlane-shell
+    .race-tower[data-mode='timing']
+    .race-driver-timing
+    > span:first-child {
+    color: #f2f4f6;
+  }
+  .pitlane-shell
+    .race-tower[data-mode='timing']
+    .race-driver-timing
+    > span:nth-child(2) {
+    color: #8f98a3;
+  }
+  .pitlane-shell .race-driver-timing > [data-best='personal'] {
+    color: #3ddc84 !important;
+  }
+  .pitlane-shell .race-driver-timing > [data-best='overall'] {
+    color: #c77dff !important;
+  }
+  .pitlane-shell .race-tower[data-mode='timing'] .race-driver-status {
+    font-size: 8px;
+  }
+}
+
+/* ---------- Driver comparison ---------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.compare-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.compare-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.compare-chip {
+  padding: 4px 8px 3px;
+  color: #fff;
+  background: color-mix(in srgb, var(--a) 28%, #141820);
+  border-left: 3px solid var(--a);
+  border-radius: 3px;
+  font: 650 15px/1 var(--font-display);
+  letter-spacing: 0.04em;
+}
+.compare-vs {
+  color: #7d8792;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.compare-rival select {
+  max-width: 150px;
+  padding: 4px 24px 4px 8px;
+  color: #f2f4f6;
+  background: color-mix(in srgb, var(--b) 22%, #141820);
+  border: 1px solid #343b45;
+  border-left: 3px solid var(--b);
+  border-radius: 3px;
+  font: 650 13px/1.1 var(--font-display);
+  cursor: pointer;
+}
+.compare-rival select:focus-visible {
+  outline: 2px solid #e8002d;
+  outline-offset: 1px;
+}
+.compare-gap {
+  margin-left: auto;
+  color: #c9ced5;
+  font: 600 12px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.compare-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 4px 0 0;
+  color: #aab2bc;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.compare-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7d8792;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.compare-legend i {
+  width: 10px;
+  height: 8px;
+  background: rgba(255, 176, 32, 0.35);
+  border-radius: 1px;
+}
+.compare-legend b {
+  display: inline-grid;
+  width: 12px;
+  height: 12px;
+  margin-left: 6px;
+  place-items: center;
+  color: #c9ced5;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 7px;
+}
+.compare-chart {
+  width: 100%;
+  min-width: 0;
+}
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 600 12px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.compare-table th,
+.compare-table td {
+  padding: 5px 4px;
+  text-align: right;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.compare-table thead th {
+  color: #7d8792;
+  font: 750 9px/1 var(--font-sans, sans-serif);
+  letter-spacing: 0.08em;
+}
+.compare-table th:first-child {
+  text-align: left;
+}
+.compare-table tbody th {
+  color: #e7eaee;
+}
+.compare-table tbody th small {
+  color: #ffb020;
+  font-size: 9px;
+}
+.compare-table td {
+  color: #9aa3ad;
+}
+.compare-table td[data-gain='a'] {
+  color: color-mix(in srgb, var(--a) 70%, #fff);
+}
+.compare-table td[data-gain='b'] {
+  color: color-mix(in srgb, var(--b) 70%, #fff);
+}
+.compare-table tr[data-neutralised] th,
+.compare-table tr[data-neutralised] td {
+  background: rgba(255, 176, 32, 0.06);
+}
+.compare-table tfoot th {
+  color: #aab2bc;
+  font: 700 10px/1 var(--font-sans, sans-serif);
+  white-space: nowrap;
+}
+.compare-table tfoot tr[data-side='a'] th {
+  border-left: 3px solid var(--a);
+  padding-left: 6px;
+}
+.compare-table tfoot tr[data-side='b'] th {
+  border-left: 3px solid var(--b);
+  padding-left: 6px;
+}
+.compare-table tfoot td {
+  color: #e7eaee;
+}
+
+/* ---------- Circuit landmarks ---------- */
+
+.pit-lane polyline {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.pit-lane-edge {
+  stroke: #0d1014;
+  stroke-width: 5;
+  opacity: 0.8;
+}
+.pit-lane-road {
+  stroke: #ffb020;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.pit-lane-label {
+  fill: #ffb020;
+  stroke: #0d1014;
+  stroke-width: 3px;
+  paint-order: stroke;
+  font: 700 9px/1 var(--font-display);
+  letter-spacing: 0.08em;
+  text-anchor: middle;
+}
+.start-finish {
+  pointer-events: none;
+}
+.start-finish-edge {
+  fill: #0d1014;
+}

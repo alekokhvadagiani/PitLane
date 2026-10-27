@@ -43,6 +43,8 @@ export type HistoricalDriver = {
   nameAcronym: string
   teamName: string
   teamColour: string
+  /** Official headshot from OpenF1, or null when absent/invalid. */
+  headshotUrl?: string | null
 }
 export type HistoricalLap = {
   lapNumber: number
@@ -67,6 +69,25 @@ export type HistoricalPitStop = {
   driverNumber: number
   lapNumber: number | null
   laneDuration: number | null
+}
+export type HistoricalInterval = {
+  date: string
+  driverNumber: number
+  gapToLeaderSeconds: number | null
+  gapToLeaderLaps: number | null
+  intervalSeconds: number | null
+  intervalLaps: number | null
+}
+export type HistoricalRaceControlMessage = {
+  date: string
+  category: string | null
+  flag: string | null
+  scope: string | null
+  /** Marshal sector (not one of the three timing sectors). */
+  sector?: number | null
+  message: string
+  driverNumber: number | null
+  lapNumber: number | null
 }
 export type HistoricalSessionResult = {
   driverNumber: number
@@ -161,6 +182,26 @@ export function getSessionStints(sessionKey: number, signal: AbortSignal) {
 export function getSessionPitStops(sessionKey: number, signal: AbortSignal) {
   return getJson<HistoricalCatalog<HistoricalPitStop>>(
     `/api/sessions/${sessionKey}/pit-stops`,
+    signal,
+  )
+}
+
+export function getIntervals(
+  sessionKey: number,
+  fromUtc: string,
+  toUtc: string,
+  signal: AbortSignal,
+) {
+  const query = new URLSearchParams({ fromUtc, toUtc })
+  return getJson<HistoricalCatalog<HistoricalInterval>>(
+    `/api/sessions/${sessionKey}/intervals?${query}`,
+    signal,
+  )
+}
+
+export function getRaceControl(sessionKey: number, signal: AbortSignal) {
+  return getJson<HistoricalCatalog<HistoricalRaceControlMessage>>(
+    `/api/sessions/${sessionKey}/race-control`,
     signal,
   )
 }
