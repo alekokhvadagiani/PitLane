@@ -1,0 +1,16 @@
+# docker-deploy profile template. Copy to
+# ~/.config/docker-deploy/projects/pitlane.conf and fill in your own values;
+# the real profile stays out of Git (it names your server and paths).
+PROJECT_DIR=/path/to/PitLane
+REMOTE_USER=deploy
+REMOTE_HOST=your-server
+REMOTE_PORT=22
+REMOTE_PATH=/home/deploy/app/PitLane
+PLATFORM=linux/amd64
+COMPOSE_PROJECT=pitlane
+COMPOSE_FILE=docker-compose.production.yml
+VERSION_VARIABLE=PITLANE_VERSION
+IMAGES="pitlane-api=src/PitLane.Api/Dockerfile pitlane-web=src/pitlane-web/Dockerfile"
+# PitLane uses no private NuGet packages. docker-deploy always mounts this
+# BuildKit secret, so give it a placeholder; no Dockerfile reads it.
+NuGetPackageSourceCredentials_github=unused

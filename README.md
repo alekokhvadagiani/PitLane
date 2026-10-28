@@ -57,6 +57,10 @@ docker compose up --build
 
 Open **http://localhost:8080**. Nginx serves the frontend and proxies `/api` to the internal backend. Only the web service is published, bound to localhost. No persistent volumes or external services are needed. Container execution must be verified on a host with a working Docker daemon.
 
+## Deploy to a server
+
+`docker-compose.production.yml` runs prebuilt images (`pitlane-api`, `pitlane-web`) tagged with `PITLANE_VERSION`; nothing is built on the server. It is made for a `docker-deploy`-style script that builds `linux/amd64` images locally, streams them over SSH (`docker save | gzip | ssh … docker load`) and runs `docker compose up -d --no-build --wait`. Copy `deploy/pitlane.conf.example` to your deploy tool's profile folder and fill in your server; real profiles are Git-ignored. The web container listens on host port `PITLANE_PORT` (default 8090), and saved sessions live in the `pitlane_archive` volume, so they survive redeploys. Both containers have health checks, so `--wait` returns once the app answers.
+
 ## Checks
 
 ```sh

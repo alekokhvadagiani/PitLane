@@ -1,0 +1,36 @@
+# Production stack for docker-deploy: images are built on the laptop and
+# streamed to the server, so nothing here builds.
+services:
+  api:
+    image: pitlane-api:${PITLANE_VERSION:?PITLANE_VERSION is required}
+    container_name: pitlane-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Archive__Path: /data/archive
+    volumes:
+      - archive:/data/archive
+    expose:
+      - "8080"
+    networks:
+      - pitlane-network
+    restart: unless-stopped
+
+  web:
+    image: pitlane-web:${PITLANE_VERSION:?PITLANE_VERSION is required}
+    container_name: pitlane-web
+    ports:
+      - "${PITLANE_PORT:-8090}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - pitlane-network
+    restart: unless-stopped
+
+networks:
+  pitlane-network:
+    driver: bridge
+
+volumes:
+  # Saved sessions (ADR 0002); survives redeploys.
+  archive:

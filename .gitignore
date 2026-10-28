@@ -46,3 +46,6 @@ skills-lock.json
 .agents/
 .claude/
 .codex/
+
+# Real deployment profiles (server address, user, local paths)
+deploy/*.conf
