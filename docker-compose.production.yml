@@ -19,7 +19,7 @@ services:
     image: pitlane-web:${PITLANE_VERSION:?PITLANE_VERSION is required}
     container_name: pitlane-web
     ports:
-      - "${PITLANE_PORT:-8090}:8080"
+      - "${PITLANE_PORT:-8093}:8080"
     depends_on:
       api:
         condition: service_healthy
