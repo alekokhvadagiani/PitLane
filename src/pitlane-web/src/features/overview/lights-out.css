@@ -1,0 +1,306 @@
+/* Scroll-driven race start: five lights, lights out, one lap. */
+.lights-out {
+  --lap: 0;
+  --v: 0;
+  --glow: 0;
+  --trail: 0.07;
+  position: relative;
+  height: 380vh;
+}
+.lights-stage {
+  position: sticky;
+  top: 66px;
+  height: calc(100vh - 66px);
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid var(--seam);
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      ellipse 55% 50% at var(--glow-x, 22%) 18%,
+      rgb(255 36 24 / calc(var(--glow) * 0.3)),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 60% 60% at 65% 55%,
+      color-mix(in srgb, var(--car) 14%, transparent),
+      transparent 70%
+    ),
+    #181a1d;
+  isolation: isolate;
+}
+.lights-out[data-phase='start'] .lights-stage {
+  background:
+    radial-gradient(
+      ellipse 55% 50% at var(--glow-x, 22%) 18%,
+      rgb(255 36 24 / calc(var(--glow) * 0.3)),
+      transparent 70%
+    ),
+    #181a1d;
+}
+
+/* Start gantry */
+.gantry {
+  position: absolute;
+  top: clamp(20px, 5vh, 48px);
+  left: clamp(20px, 4vw, 56px);
+  z-index: 2;
+  display: flex;
+  gap: clamp(8px, 1.6vw, 22px);
+  padding: clamp(10px, 1.4vw, 18px);
+  border-radius: 14px;
+  background: #0b0c0d;
+  box-shadow:
+    0 0 0 1px #2a2e33,
+    0 30px 60px rgb(0 0 0 / 0.5);
+}
+.gantry-column {
+  display: grid;
+  gap: clamp(6px, 0.8vw, 10px);
+  padding: clamp(6px, 0.8vw, 10px);
+  border-radius: 10px;
+  background: #151719;
+}
+.gantry-column i {
+  display: block;
+  width: clamp(20px, 3.2vw, 46px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #34383d, #1d2023 70%);
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 0.7);
+}
+.gantry-column[data-on='true'] .lamp {
+  background: radial-gradient(circle at 40% 35%, #ffb3a8, #ff2a1c 45%, #b80d05);
+  box-shadow:
+    0 0 18px 4px rgb(255 42 28 / 0.75),
+    0 0 60px 10px rgb(255 42 28 / 0.35);
+  transition:
+    background 60ms ease,
+    box-shadow 60ms ease;
+}
+
+/* Speed streaks, strength follows scroll speed */
+.lights-streaks {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 180px,
+      rgb(241 239 232 / 0.55) 180px 330px,
+      transparent 330px 520px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 90px,
+      color-mix(in srgb, var(--car) 70%, transparent) 90px 170px,
+      transparent 170px 610px
+    );
+  background-position:
+    calc(var(--lap) * -9000px) 0,
+    calc(var(--lap) * -14000px + 240px) 19px;
+  -webkit-mask: repeating-linear-gradient(
+    to bottom,
+    #000 0 1px,
+    transparent 1px 38px
+  );
+  mask: repeating-linear-gradient(to bottom, #000 0 1px, transparent 1px 38px);
+}
+.lights-out[data-phase='lap'] .lights-streaks {
+  opacity: calc(var(--v) * 0.7);
+}
+
+/* The lap */
+.lights-circuit {
+  position: absolute;
+  top: 7%;
+  right: 4%;
+  z-index: 1;
+  width: min(62%, 760px);
+  height: 86%;
+  overflow: visible;
+}
+.lights-circuit > path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Dashed strokes use SVG units: non-scaling strokes break pathLength dashes. */
+.lap-tarmac {
+  stroke: rgb(255 255 255 / 0.07);
+  stroke-width: 22;
+  vector-effect: non-scaling-stroke;
+}
+.lap-drawn {
+  stroke: var(--paint);
+  stroke-width: 0.6;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--lap));
+  opacity: 0.85;
+}
+.lap-trail {
+  stroke: var(--car);
+  stroke-width: 1.4;
+  stroke-dasharray: 0.07 2;
+  stroke-dashoffset: var(--trail);
+  filter: drop-shadow(0 0 1.2px var(--car));
+}
+.lap-car {
+  fill: var(--car);
+  stroke: #fff;
+  stroke-width: 0.5;
+}
+.lap-car-halo {
+  stroke: none;
+  opacity: 0.3;
+  filter: blur(1.5px);
+}
+
+/* Copy */
+.lights-copy {
+  position: absolute;
+  bottom: clamp(24px, 5vh, 56px);
+  left: clamp(20px, 4vw, 56px);
+  z-index: 3;
+  display: grid;
+  max-width: min(520px, 44%);
+}
+.lights-step {
+  grid-area: 1 / 1;
+  display: grid;
+  align-content: end;
+  justify-items: start;
+  gap: 10px;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 300ms ease,
+    transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 400ms;
+}
+.lights-out[data-phase='start'] [data-step='start'],
+.lights-out[data-phase='lap'] [data-step='lap'],
+.lights-out[data-phase='finish'] [data-step='finish'] {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition-delay: 0s;
+}
+.lights-step h2,
+.lights-title {
+  margin: 0;
+  font-size: clamp(44px, 6.6vw, 108px);
+  font-weight: 850;
+  font-stretch: 125%;
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+  color: var(--paint);
+}
+.lights-step p:not(.lights-title) {
+  margin: 0;
+  font-size: 17px;
+  color: var(--haze);
+}
+.lights-step small {
+  max-width: 44ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7c8289;
+}
+.lights-step .race-primary-link {
+  margin-top: 8px;
+}
+
+/* Flash when the lights go out */
+.lights-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse at 50% 20%,
+    color-mix(in srgb, var(--car) 45%, #fff),
+    transparent 70%
+  );
+}
+.lights-out[data-phase='lap'] .lights-stage::after {
+  animation: lights-flash 650ms ease-out;
+}
+@keyframes lights-flash {
+  from {
+    opacity: 0.55;
+  }
+}
+
+/* Chequered flag strip */
+.lights-chequer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: 28px;
+  background: repeating-conic-gradient(#f1efe8 0 25%, #111 0 50%) 0 0 / 28px
+    28px;
+  transform: translateY(100%);
+  transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lights-out[data-phase='finish'] .lights-chequer {
+  transform: none;
+}
+
+@media (max-width: 900px) {
+  .lights-out {
+    height: 320vh;
+  }
+  .lights-stage {
+    top: 0;
+    height: 100vh;
+    height: 100svh;
+    min-height: 0;
+    border-radius: 0;
+    border-inline: 0;
+  }
+  .lights-stage {
+    --glow-x: 50%;
+  }
+  .gantry {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .lights-circuit {
+    top: 22%;
+    right: 4%;
+    width: 92%;
+    height: 44%;
+  }
+  .lights-copy {
+    right: 20px;
+    bottom: 48px;
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lights-out {
+    height: auto;
+  }
+  .lights-stage {
+    position: relative;
+    top: 0;
+    height: min(720px, 90vh);
+  }
+  .lights-stage::after,
+  .lights-streaks {
+    display: none;
+  }
+  .lights-step,
+  .lights-chequer {
+    transition: none;
+  }
+}

@@ -10,6 +10,9 @@ import type {
 import { bestSectors, compareDrivers } from '../src/features/replay/compare.js'
 import {
   aeroAidChanges,
+  radioClipTime,
+  radioClips,
+  radioClipsCrossed,
   formatGap,
   intervalAt,
   intervalsByDriver,
@@ -618,7 +621,7 @@ test('track status follows sector yellows, safety car and track-wide green', () 
     { sector: 3, flag: 'YELLOW' },
     { sector: 4, flag: 'DOUBLE YELLOW' },
   ])
-  expect(trackStatusLabel(yellow)).toBe('Double yellow · sectors 3, 4')
+  expect(trackStatusLabel(yellow)).toBe('Double yellow in marshal sectors 3, 4')
   expect(trackStatusAt(events, 25_000).level).toBe('yellow')
   expect(trackStatusLabel(trackStatusAt(events, 35_000))).toBe('Safety car')
   expect(trackStatusLabel(trackStatusAt(events, 45_000))).toBe(
@@ -776,4 +779,39 @@ test('driver comparison only uses laps finished before the playhead', () => {
   })
   expect(rows[1].gap).toBeCloseTo(-0.5)
   expect(bestSectors(rows, 'a')[0]).toBe(29.5)
+})
+
+test('team radio clips are timed from the recording, not the feed', () => {
+  const url = (stamp: string) =>
+    `https://livetiming.formula1.com/static/2026/x/TeamRadio/ANT_12_${stamp}.mp3`
+  // Austin (UTC-5): recorded 15:00:45 local, published 31 s later.
+  expect(
+    new Date(
+      radioClipTime('2026-10-25T20:01:16.664Z', url('20261025_150045')),
+    ).toISOString(),
+  ).toBe('2026-10-25T20:00:45.000Z')
+  // File time after the feed time is implausible: keep the feed time.
+  expect(
+    radioClipTime('2026-10-25T20:01:16.000Z', url('20261025_150300')),
+  ).toBe(Date.parse('2026-10-25T20:01:16.000Z'))
+  // No timestamp in the name.
+  expect(radioClipTime('2026-10-25T20:01:16.000Z', 'https://x/clip.mp3')).toBe(
+    Date.parse('2026-10-25T20:01:16.000Z'),
+  )
+  const clips = radioClips([
+    {
+      date: '2026-10-25T20:05:00Z',
+      driverNumber: 4,
+      recordingUrl: 'https://x/b.mp3',
+    },
+    {
+      date: '2026-10-25T20:01:00Z',
+      driverNumber: 12,
+      recordingUrl: 'https://x/a.mp3',
+    },
+  ])
+  expect(clips.map((clip) => clip.driverNumber)).toEqual([12, 4])
+  const t = Date.parse('2026-10-25T20:01:00Z')
+  expect(radioClipsCrossed(clips, t - 1_000, t).length).toBe(1)
+  expect(radioClipsCrossed(clips, t, t + 1_000).length).toBe(0)
 })

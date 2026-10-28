@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import type { HistoricalCarSample, HistoricalDriver } from '@/lib/api'
 import type { CompareContext } from './compare-panel'
 import { TyreLoader } from './tyre'
+import { RadioPanel, type RadioContext } from './radio'
 import {
   aeroAidStateAt,
   ReplayClock,
@@ -624,7 +625,7 @@ export function CockpitTelemetry({
   )
 }
 
-type TelemetryView = 'broadcast' | 'cockpit' | 'compare'
+type TelemetryView = 'broadcast' | 'cockpit' | 'compare' | 'radio'
 
 // ECharts is large; load it only when someone opens the comparison.
 const ComparePanel = lazy(() =>
@@ -637,25 +638,29 @@ const VIEW_KEY = 'pitlane.telemetryView'
 function readView(): TelemetryView {
   try {
     const saved = localStorage.getItem(VIEW_KEY)
-    return saved === 'cockpit' || saved === 'compare' ? saved : 'broadcast'
+    return saved === 'cockpit' || saved === 'compare' || saved === 'radio'
+      ? saved
+      : 'broadcast'
   } catch {
     return 'broadcast'
   }
 }
 
-/** Switches between the broadcast readout and the cockpit dial. */
+/** Switches between the broadcast readout, cockpit dial, comparison and radio. */
 export function TelemetryPanel({
   samples,
   clock,
   aero,
   selected,
   compare,
+  radio,
 }: {
   samples: HistoricalCarSample[]
   clock: ReplayClock
   aero: AeroContext
   selected?: HistoricalDriver
   compare: CompareContext
+  radio: RadioContext
 }) {
   const [view, setView] = useState<TelemetryView>(readView)
   function choose(next: TelemetryView) {
@@ -673,23 +678,29 @@ export function TelemetryPanel({
         role="radiogroup"
         aria-label="Telemetry view"
       >
-        {(['broadcast', 'cockpit', 'compare'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            aria-checked={view === option}
-            onClick={() => choose(option)}
-          >
-            {option === 'broadcast'
-              ? 'Broadcast'
-              : option === 'cockpit'
-                ? 'Cockpit'
-                : 'Compare'}
-          </button>
-        ))}
+        {(['broadcast', 'cockpit', 'compare', 'radio'] as const).map(
+          (option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={view === option}
+              onClick={() => choose(option)}
+            >
+              {option === 'broadcast'
+                ? 'Broadcast'
+                : option === 'cockpit'
+                  ? 'Cockpit'
+                  : option === 'compare'
+                    ? 'Compare'
+                    : 'Radio'}
+            </button>
+          ),
+        )}
       </div>
-      {view === 'compare' ? (
+      {view === 'radio' ? (
+        <RadioPanel context={radio} clock={clock} selected={selected} />
+      ) : view === 'compare' ? (
         <Suspense fallback={<TyreLoader label="Loading comparison" compact />}>
           <ComparePanel selected={selected} context={compare} clock={clock} />
         </Suspense>

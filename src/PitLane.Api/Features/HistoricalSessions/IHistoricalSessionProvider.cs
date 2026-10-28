@@ -11,6 +11,7 @@ public interface IHistoricalSessionProvider
     Task<HistoricalCatalog<HistoricalStint>> GetStintsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalPitStop>> GetPitStopsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalRaceControlMessage>> GetRaceControlAsync(int sessionKey, CancellationToken cancellationToken);
+    Task<HistoricalCatalog<HistoricalTeamRadio>> GetTeamRadioAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalSessionResult>> GetSessionResultsAsync(int sessionKey, CancellationToken cancellationToken);
     Task<HistoricalCatalog<HistoricalPositionSample>> GetPositionsAsync(
         int sessionKey,

@@ -5,6 +5,8 @@ services:
       dockerfile: src/PitLane.Api/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+    volumes:
+      - archive:/data/archive
     restart: unless-stopped
   web:
     build:
@@ -15,3 +17,6 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+
+volumes:
+  archive:

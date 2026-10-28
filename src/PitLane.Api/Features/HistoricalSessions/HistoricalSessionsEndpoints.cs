@@ -230,6 +230,28 @@ public static class HistoricalSessionsEndpoints
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+        group.MapGet("/sessions/{sessionKey:int}/team-radio", async (
+                int sessionKey,
+                IHistoricalSessionProvider provider,
+                CancellationToken cancellationToken) =>
+            {
+                if (sessionKey <= 0) return Invalid("sessionKey", "Session key must be greater than zero.");
+                try
+                {
+                    return Results.Ok(await provider.GetTeamRadioAsync(sessionKey, cancellationToken));
+                }
+                catch (HistoricalProviderException exception)
+                {
+                    return ProviderUnavailable("Team radio is temporarily unavailable", exception);
+                }
+            })
+            .WithName("GetHistoricalSessionTeamRadio")
+            .WithSummary("List team radio clips")
+            .WithDescription("Returns timestamped team radio clips with their F1 live timing MP3 URLs. Coverage varies by session.")
+            .Produces<HistoricalCatalog<HistoricalTeamRadio>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         group.MapGet("/sessions/{sessionKey:int}/results", async (
                 int sessionKey,
                 IHistoricalSessionProvider provider,

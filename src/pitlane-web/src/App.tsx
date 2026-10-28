@@ -1,9 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
   ArrowUpRight,
-  AudioLines,
   CircleHelp,
   Gauge,
   Headphones,
@@ -14,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Landing } from '@/features/overview/landing'
 import {
   Dialog,
   DialogContent,
@@ -104,14 +103,8 @@ function App() {
           href="#overview"
           aria-label="PitLane overview"
         >
-          <span className="race-brand-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span>
-            PIT<span>LANE</span>
-          </span>
+          <span className="race-brand-mark" aria-hidden="true" />
+          <span>PitLane</span>
         </a>
         <nav className="race-nav" aria-label="Main navigation">
           {navigation.map(({ id, label, icon: Icon }) => (
@@ -128,7 +121,7 @@ function App() {
         </nav>
         <div className="race-header-status">
           <span className="archive-indicator">
-            <i /> HISTORICAL DATA
+            <i /> Recorded sessions
           </span>
           <Dialog>
             <DialogTrigger asChild>
@@ -168,7 +161,7 @@ function App() {
         ) : null}
         <footer className="race-footer">
           <span>
-            <b>PITLANE</b> / Independent race data workspace
+            <b>PitLane</b> Independent race data workspace
           </span>
           <div className="api-status" aria-live="polite">
             {capabilities.isPending ? (
@@ -200,81 +193,7 @@ function App() {
 }
 
 function Overview() {
-  return (
-    <div className="overview-page">
-      <section className="overview-hero">
-        <div className="overview-copy">
-          <p className="section-kicker">
-            <span /> THE PIT WALL, ON YOUR TERMS
-          </p>
-          <h1>
-            Every lap has
-            <br />
-            another story.
-          </h1>
-          <p className="overview-lede">
-            Choose a recorded Formula 1 session and follow the race through real
-            position, timing, and car data.
-          </p>
-          <a className="race-primary-link" href="#replay">
-            <RotateCcw size={16} aria-hidden="true" /> Open race replay{' '}
-            <ArrowUpRight size={15} aria-hidden="true" />
-          </a>
-        </div>
-        <div
-          className="overview-signal"
-          aria-label="Live session not connected"
-        >
-          <div className="signal-head">
-            <span className="signal-light" />
-            <span>LIVE FEED</span>
-            <strong>OFFLINE</strong>
-          </div>
-          <div className="signal-rule" />
-          <p>Historical replay is ready.</p>
-          <span>OpenF1 archive · 2023 onward</span>
-        </div>
-      </section>
-      <section className="mode-strip" aria-label="PitLane modes">
-        <a href="#live">
-          <Radio size={17} aria-hidden="true" />
-          <span>
-            <strong>Live</strong>
-            <small>Provider not connected</small>
-          </span>
-          <ArrowUpRight size={14} aria-hidden="true" />
-        </a>
-        <a href="#replay">
-          <RotateCcw size={17} aria-hidden="true" />
-          <span>
-            <strong>Replay</strong>
-            <small>Recorded sessions</small>
-          </span>
-          <ArrowUpRight size={14} aria-hidden="true" />
-        </a>
-        <a href="#telemetry">
-          <Activity size={17} aria-hidden="true" />
-          <span>
-            <strong>Telemetry</strong>
-            <small>Available by session</small>
-          </span>
-          <ArrowUpRight size={14} aria-hidden="true" />
-        </a>
-        <a href="#radio">
-          <AudioLines size={17} aria-hidden="true" />
-          <span>
-            <strong>Team radio</strong>
-            <small>Clips when available</small>
-          </span>
-          <ArrowUpRight size={14} aria-hidden="true" />
-        </a>
-      </section>
-      <p className="overview-source">
-        No session loaded <span /> No timing, telemetry, or positions are shown
-        until a session is selected.
-      </p>
-    </div>
-  )
+  return <Landing />
 }
 
 function ModePage({ mode }: { mode: Mode }) {

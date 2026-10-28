@@ -70,6 +70,11 @@ export type HistoricalPitStop = {
   lapNumber: number | null
   laneDuration: number | null
 }
+export type HistoricalTeamRadio = {
+  date: string
+  driverNumber: number
+  recordingUrl: string
+}
 export type HistoricalInterval = {
   date: string
   driverNumber: number
@@ -199,6 +204,13 @@ export function getIntervals(
   )
 }
 
+export function getTeamRadio(sessionKey: number, signal: AbortSignal) {
+  return getJson<HistoricalCatalog<HistoricalTeamRadio>>(
+    `/api/sessions/${sessionKey}/team-radio`,
+    signal,
+  )
+}
+
 export function getRaceControl(sessionKey: number, signal: AbortSignal) {
   return getJson<HistoricalCatalog<HistoricalRaceControlMessage>>(
     `/api/sessions/${sessionKey}/race-control`,
@@ -269,9 +281,32 @@ export function getCarData(
   )
 }
 
-async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
+export type SessionArchiveStatus = {
+  sessionKey: number
+  state: 'not-saved' | 'queued' | 'saving' | 'saved' | 'failed'
+  completedSteps: number
+  totalSteps: number
+  savedAtUtc: string | null
+  sizeBytes: number
+  message: string | null
+}
+
+/** Asks the API to keep this finished session on disk; returns its progress. */
+export function saveSessionArchive(sessionKey: number, signal: AbortSignal) {
+  return getJson<SessionArchiveStatus>(
+    `/api/sessions/${sessionKey}/archive`,
+    signal,
+    'POST',
+  )
+}
+
+async function getJson<T>(
+  url: string,
+  signal: AbortSignal,
+  method: 'GET' | 'POST' = 'GET',
+): Promise<T> {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)])
-  const response = await fetch(url, { signal: requestSignal })
+  const response = await fetch(url, { method, signal: requestSignal })
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
     const problem =

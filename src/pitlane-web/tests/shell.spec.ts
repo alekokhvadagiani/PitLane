@@ -22,7 +22,10 @@ test('race navigation stays compact and pages explain data availability', async 
 
   const navigation = page.getByRole('navigation', { name: 'Main navigation' })
   await expect(
-    page.getByRole('heading', { name: /Every lap has/ }),
+    page.getByRole('heading', {
+      level: 1,
+      name: /Relive the|Replay any Formula 1 session/,
+    }),
   ).toBeVisible()
   await page.screenshot({
     path: testInfo.outputPath('overview.png'),
@@ -31,7 +34,7 @@ test('race navigation stays compact and pages explain data availability', async 
   await expect(navigation.getByRole('link')).toHaveCount(5)
   for (const [label, hash, heading] of [
     ['Live', 'live', 'No live feed connected'],
-    ['Replay', 'replay', 'Choose a historical session'],
+    ['Replay', 'replay', 'Pick a race to replay.'],
     ['Telemetry', 'telemetry', 'Compare a recorded lap'],
     ['Team Radio', 'radio', 'No radio clips loaded'],
   ]) {
@@ -325,11 +328,11 @@ test('race browser synchronizes cockpit telemetry and the unified replay timelin
   })
 
   await page.goto('/#replay')
-  await page.getByRole('button', { name: 'Browse historical sessions' }).click()
+  await page.getByRole('button', { name: 'Browse sessions' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   await expect(
-    dialog.getByRole('heading', { name: 'Find a race weekend' }),
+    dialog.getByRole('heading', { name: 'Choose a session' }),
   ).toBeVisible()
   await page.screenshot({
     path: testInfo.outputPath('session-browser.png'),
@@ -668,7 +671,7 @@ test('upcoming sessions cannot be opened as historical replays', async ({
     })
   })
   await page.goto('/#replay')
-  await page.getByRole('button', { name: 'Browse historical sessions' }).click()
+  await page.getByRole('button', { name: 'Browse sessions' }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: /Future Grand Prix/ }).click()
   await expect(dialog.locator('.session-option')).toBeDisabled()

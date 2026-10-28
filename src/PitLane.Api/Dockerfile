@@ -7,6 +7,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_HTTP_PORTS=8080
+ENV Archive__Path=/data/archive
+# Owned by the app user so a fresh named volume is writable.
+RUN mkdir -p /data/archive && chown $APP_UID /data/archive
 USER $APP_UID
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "PitLane.Api.dll"]

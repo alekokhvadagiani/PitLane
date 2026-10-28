@@ -7,6 +7,7 @@ import type {
   HistoricalRaceControlMessage,
   HistoricalSessionResult,
   HistoricalStint,
+  HistoricalTeamRadio,
 } from '../../lib/api.js'
 
 export type PlaybackSnapshot = {
@@ -36,7 +37,7 @@ export class ReplayClock {
   private previousFrameMs = 0
   private listeners = new Set<(snapshot: PlaybackSnapshot) => void>()
   private readonly startMs: number
-  private readonly durationMs: number
+  private durationMs: number
   private readonly frames: FrameScheduler
 
   constructor(
@@ -70,6 +71,19 @@ export class ReplayClock {
     this.elapsedMs = Math.max(0, Math.min(elapsedMs, this.durationMs))
     this.emit()
     if (this.elapsedMs >= this.durationMs) this.pause()
+  }
+
+  /** Changes the replay length without moving the playhead (unless past the end). */
+  setDuration(durationMs: number) {
+    if (!Number.isFinite(durationMs) || durationMs < 0) return
+    if (durationMs === this.durationMs) return
+    this.durationMs = durationMs
+    if (this.elapsedMs > durationMs) this.seek(durationMs)
+    else this.emit()
+  }
+
+  getDurationMs() {
+    return this.durationMs
   }
 
   setSpeed(speed: number) {
@@ -943,10 +957,14 @@ export function trackStatusAt(
   return { level, sectors: list, safetyCar, red }
 }
 
-/** Short banner text, e.g. "Double yellow · sector 3" or "Safety car". */
+/**
+ * Short banner text, e.g. "Double yellow in marshal sector 3" or "Safety car".
+ * Race control flags marshal sectors (about 20 posts around a lap), not the
+ * three timing sectors.
+ */
 export function trackStatusLabel(status: TrackStatus) {
   const sectorText = status.sectors.length
-    ? ` · sector${status.sectors.length > 1 ? 's' : ''} ${status.sectors.map((item) => item.sector).join(', ')}`
+    ? ` in marshal sector${status.sectors.length > 1 ? 's' : ''} ${status.sectors.map((item) => item.sector).join(', ')}`
     : ''
   switch (status.level) {
     case 'red':
@@ -1167,4 +1185,116 @@ export function pitLaneTraceCandidates(pitStops: HistoricalPitStop[]) {
       fromMs: exitMs - stop.laneDuration! * 1_000 - 1_000,
       toMs: exitMs + 1_000,
     }))
+}
+
+// ---------- Team radio ----------
+
+export type RadioClip = {
+  id: string
+  driverNumber: number
+  url: string
+  /** When the clip was recorded, as best known. */
+  timeMs: number
+}
+
+/**
+ * When a clip was recorded. OpenF1's `date` is when the clip appeared in the
+ * timing feed, typically 10-70 s after the fact. The file name carries the
+ * local recording time (`..._20261025_150045.mp3`); converted to UTC with the
+ * whole-hour offset to `date`, it is used when it falls 0-120 s before
+ * `date`. Otherwise `date` is kept.
+ */
+export function radioClipTime(date: string, url: string) {
+  const publishedMs = Date.parse(date)
+  const match = /_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.mp3$/i.exec(url)
+  if (!match) return publishedMs
+  const [, y, mo, d, h, mi, se] = match.map(Number)
+  const localAsUtc = Date.UTC(y, mo - 1, d, h, mi, se)
+  const hour = 3_600_000
+  const offset = Math.round((publishedMs - localAsUtc) / hour) * hour
+  const recordedMs = localAsUtc + offset
+  const lag = publishedMs - recordedMs
+  return lag >= 0 && lag <= 120_000 ? recordedMs : publishedMs
+}
+
+export function radioClips(items: HistoricalTeamRadio[]): RadioClip[] {
+  return items
+    .map((item, index) => ({
+      id: `radio-${index}-${item.driverNumber}`,
+      driverNumber: item.driverNumber,
+      url: item.recordingUrl,
+      timeMs: radioClipTime(item.date, item.recordingUrl),
+    }))
+    .filter((clip) => Number.isFinite(clip.timeMs))
+    .sort((a, b) => a.timeMs - b.timeMs)
+}
+
+/** Clips whose time falls in (fromMs, toMs]: the ones the playhead just passed. */
+export function radioClipsCrossed(
+  clips: RadioClip[],
+  fromMs: number,
+  toMs: number,
+) {
+  return clips.filter((clip) => clip.timeMs > fromMs && clip.timeMs <= toMs)
+}
+
+/** Time kept after the last recorded lap ends: the cool-down lap. */
+export const AFTER_FINISH_MS = 3 * 60_000
+
+/**
+ * Replay length from recorded laps: the end of the last lap any car finished,
+ * plus the cool-down lap. OpenF1's session end is the scheduled slot (two
+ * hours for every race), not when the session actually finished. Falls back
+ * to the scheduled length when no lap has a recorded duration.
+ */
+export function recordedDurationMs(
+  laps: HistoricalLap[],
+  startMs: number,
+  scheduledMs: number,
+) {
+  let lastLapEndMs = -Infinity
+  for (const lap of laps) {
+    if (!lap.dateStart || lap.lapDuration == null || !(lap.lapDuration > 0))
+      continue
+    const endMs = Date.parse(lap.dateStart) + lap.lapDuration * 1_000
+    if (Number.isFinite(endMs)) lastLapEndMs = Math.max(lastLapEndMs, endMs)
+  }
+  if (!Number.isFinite(lastLapEndMs) || lastLapEndMs <= startMs)
+    return { durationMs: scheduledMs, finishMs: null }
+  return {
+    durationMs: lastLapEndMs + AFTER_FINISH_MS - startMs,
+    finishMs: lastLapEndMs,
+  }
+}
+
+export type TrackStatusBand = {
+  fromMs: number
+  toMs: number
+  level: Exclude<TrackStatus['level'], 'green'>
+}
+
+/** Periods of non-green track status, merged when the level stays the same. */
+export function trackStatusBands(
+  events: RaceControlEvent[],
+  endMs: number,
+): TrackStatusBand[] {
+  const bands: TrackStatusBand[] = []
+  let open: TrackStatusBand | null = null
+  for (let index = 0; index < events.length; index++) {
+    const timeMs = events[index].timeMs
+    if (timeMs > endMs) break
+    // Messages sharing a timestamp settle together.
+    if (index + 1 < events.length && events[index + 1].timeMs === timeMs)
+      continue
+    const { level } = trackStatusAt(events, timeMs)
+    if (open && open.level === level) continue
+    if (open) {
+      open.toMs = timeMs
+      bands.push(open)
+      open = null
+    }
+    if (level !== 'green') open = { fromMs: timeMs, toMs: endMs, level }
+  }
+  if (open) bands.push(open)
+  return bands
 }

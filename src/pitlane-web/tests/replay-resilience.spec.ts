@@ -146,7 +146,7 @@ test('historical replay data is reused after navigating away and back', async ({
     location.hash = '#replay'
   })
   await expect(
-    page.getByRole('heading', { name: 'Choose a historical session' }),
+    page.getByRole('heading', { name: 'Pick a race to replay.' }),
   ).toBeVisible()
   await page.evaluate((hash) => {
     location.hash = hash
@@ -191,7 +191,7 @@ test('switching away cancels unfinished position-window requests', async ({
     location.hash = '#replay'
   })
   await expect(
-    page.getByRole('heading', { name: 'Choose a historical session' }),
+    page.getByRole('heading', { name: 'Pick a race to replay.' }),
   ).toBeVisible()
   await expect.poll(() => abortedCount, { timeout: 5_000 }).toBeGreaterThan(0)
 })

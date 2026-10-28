@@ -64,6 +64,26 @@ public sealed class OpenF1HistoricalSessionProvider(
             return new HistoricalCatalog<HistoricalSession>(Source, timeProvider.GetUtcNow(), sessions);
         })!;
 
+    /// <summary>One session by key, or null when OpenF1 does not list it.</summary>
+    public Task<HistoricalSession?> GetSessionAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:session:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1Session>($"sessions?session_key={sessionKey}", cancellationToken);
+            return records
+                .Where(item => item.SessionKey == sessionKey && !string.IsNullOrWhiteSpace(item.SessionName))
+                .Select(item => new HistoricalSession(
+                    item.SessionKey,
+                    item.MeetingKey,
+                    item.SessionName,
+                    item.SessionType,
+                    item.DateStart,
+                    item.DateEnd))
+                .FirstOrDefault();
+        });
+
     public Task<HistoricalCatalog<HistoricalWeatherObservation>> GetWeatherAsync(
         int sessionKey,
         CancellationToken cancellationToken) =>
@@ -211,6 +231,23 @@ public sealed class OpenF1HistoricalSessionProvider(
             return new HistoricalCatalog<HistoricalRaceControlMessage>(Source, timeProvider.GetUtcNow(), messages);
         })!;
 
+    public Task<HistoricalCatalog<HistoricalTeamRadio>> GetTeamRadioAsync(
+        int sessionKey,
+        CancellationToken cancellationToken) =>
+        cache.GetOrCreateAsync($"openf1:team-radio:{sessionKey}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            var records = await FetchAsync<OpenF1TeamRadio>($"team_radio?session_key={sessionKey}", cancellationToken);
+            var clips = records
+                .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0)
+                .Select(item => (item, url: SafeRadioUrl(item.RecordingUrl)))
+                .Where(pair => pair.url is not null)
+                .OrderBy(pair => pair.item.Date)
+                .Select(pair => new HistoricalTeamRadio(pair.item.Date, pair.item.DriverNumber, pair.url!))
+                .ToArray();
+            return new HistoricalCatalog<HistoricalTeamRadio>(Source, timeProvider.GetUtcNow(), clips);
+        })!;
+
     public Task<HistoricalCatalog<HistoricalSessionResult>> GetSessionResultsAsync(
         int sessionKey,
         CancellationToken cancellationToken) =>
@@ -271,20 +308,28 @@ public sealed class OpenF1HistoricalSessionProvider(
         CancellationToken cancellationToken)
     {
         ValidateWindow(fromUtc, toUtc);
-        var from = FormatDate(fromUtc);
-        var to = FormatDate(toUtc);
-        var path = $"location?session_key={sessionKey}&date%3E%3D{Uri.EscapeDataString(from)}&date%3C{Uri.EscapeDataString(to)}";
-        return cache.GetOrCreateAsync($"openf1:positions:all:{sessionKey}:{from}:{to}", async entry =>
+        return cache.GetOrCreateAsync($"openf1:positions:all:{sessionKey}:{FormatDate(fromUtc)}:{FormatDate(toUtc)}", entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var records = await FetchAsync<OpenF1Position>(path, cancellationToken);
-            var positions = records
-                .Where(item => item.SessionKey == sessionKey && item.Date >= fromUtc && item.Date < toUtc)
-                .OrderBy(item => item.Date)
-                .Select(item => new HistoricalPositionSample(item.Date, item.X, item.Y, item.Z, item.DriverNumber))
-                .ToArray();
-            return new HistoricalCatalog<HistoricalPositionSample>(Source, timeProvider.GetUtcNow(), positions);
+            return LoadSessionPositionsAsync(sessionKey, fromUtc, toUtc, cancellationToken);
         })!;
+    }
+
+    /// <summary>All cars' positions in a window, without memory caching (for the disk archive).</summary>
+    public async Task<HistoricalCatalog<HistoricalPositionSample>> LoadSessionPositionsAsync(
+        int sessionKey,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken cancellationToken)
+    {
+        ValidateWindow(fromUtc, toUtc);
+        var records = await FetchAsync<OpenF1Position>(WindowPath("location", sessionKey, null, fromUtc, toUtc), cancellationToken);
+        var positions = records
+            .Where(item => item.SessionKey == sessionKey && item.Date >= fromUtc && item.Date < toUtc)
+            .OrderBy(item => item.Date)
+            .Select(item => new HistoricalPositionSample(item.Date, item.X, item.Y, item.Z, item.DriverNumber))
+            .ToArray();
+        return new HistoricalCatalog<HistoricalPositionSample>(Source, timeProvider.GetUtcNow(), positions);
     }
 
     public Task<HistoricalCatalog<HistoricalClassificationChange>> GetClassificationAsync(
@@ -311,21 +356,36 @@ public sealed class OpenF1HistoricalSessionProvider(
         CancellationToken cancellationToken)
     {
         ValidateWindow(fromUtc, toUtc);
-        var from = FormatDate(fromUtc);
-        var to = FormatDate(toUtc);
-        var path = $"car_data?session_key={sessionKey}&driver_number={driverNumber}&date%3E%3D{Uri.EscapeDataString(from)}&date%3C{Uri.EscapeDataString(to)}";
-        return cache.GetOrCreateAsync($"openf1:car-data:{sessionKey}:{driverNumber}:{from}:{to}", async entry =>
+        return cache.GetOrCreateAsync($"openf1:car-data:{sessionKey}:{driverNumber}:{FormatDate(fromUtc)}:{FormatDate(toUtc)}", entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var records = await FetchAsync<OpenF1CarData>(path, cancellationToken);
-            var samples = records
-                .Where(item => item.SessionKey == sessionKey && item.DriverNumber == driverNumber && item.Date >= fromUtc && item.Date < toUtc)
-                .OrderBy(item => item.Date)
-                .Select(item => new HistoricalCarSample(item.Date, item.DriverNumber, item.Speed,
-                    item.Throttle, item.Brake, item.Rpm, item.Gear, item.Drs))
-                .ToArray();
-            return new HistoricalCatalog<HistoricalCarSample>(Source, timeProvider.GetUtcNow(), samples);
+            return LoadCarDataAsync(sessionKey, driverNumber, fromUtc, toUtc, cancellationToken);
         })!;
+    }
+
+    /// <summary>
+    /// Car telemetry in a window for one car, or every car when driverNumber is
+    /// null, without memory caching (for the disk archive).
+    /// </summary>
+    public async Task<HistoricalCatalog<HistoricalCarSample>> LoadCarDataAsync(
+        int sessionKey,
+        int? driverNumber,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken cancellationToken)
+    {
+        ValidateWindow(fromUtc, toUtc);
+        var records = await FetchAsync<OpenF1CarData>(WindowPath("car_data", sessionKey, driverNumber, fromUtc, toUtc), cancellationToken);
+        var samples = records
+            .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0 &&
+                (driverNumber is null || item.DriverNumber == driverNumber) &&
+                item.Date >= fromUtc && item.Date < toUtc)
+            .OrderBy(item => item.DriverNumber)
+            .ThenBy(item => item.Date)
+            .Select(item => new HistoricalCarSample(item.Date, item.DriverNumber, item.Speed,
+                item.Throttle, item.Brake, item.Rpm, item.Gear, item.Drs))
+            .ToArray();
+        return new HistoricalCatalog<HistoricalCarSample>(Source, timeProvider.GetUtcNow(), samples);
     }
 
     public Task<HistoricalCatalog<HistoricalInterval>> GetIntervalsAsync(
@@ -335,14 +395,23 @@ public sealed class OpenF1HistoricalSessionProvider(
         CancellationToken cancellationToken)
     {
         ValidateWindow(fromUtc, toUtc);
-        var from = FormatDate(fromUtc);
-        var to = FormatDate(toUtc);
-        var path = $"intervals?session_key={sessionKey}&date%3E%3D{Uri.EscapeDataString(from)}&date%3C{Uri.EscapeDataString(to)}";
-        return cache.GetOrCreateAsync($"openf1:intervals:{sessionKey}:{from}:{to}", async entry =>
+        return cache.GetOrCreateAsync($"openf1:intervals:{sessionKey}:{FormatDate(fromUtc)}:{FormatDate(toUtc)}", entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var records = await FetchAsync<OpenF1Interval>(path, cancellationToken);
-            var intervals = records
+            return LoadIntervalsAsync(sessionKey, fromUtc, toUtc, cancellationToken);
+        })!;
+    }
+
+    /// <summary>Gaps in a window without memory caching (for the disk archive).</summary>
+    public async Task<HistoricalCatalog<HistoricalInterval>> LoadIntervalsAsync(
+        int sessionKey,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken cancellationToken)
+    {
+        ValidateWindow(fromUtc, toUtc);
+        var records = await FetchAsync<OpenF1Interval>(WindowPath("intervals", sessionKey, null, fromUtc, toUtc), cancellationToken);
+        var intervals = records
                 .Where(item => item.SessionKey == sessionKey && item.DriverNumber > 0 && item.Date >= fromUtc && item.Date < toUtc)
                 .OrderBy(item => item.DriverNumber)
                 .ThenBy(item => item.Date)
@@ -353,8 +422,7 @@ public sealed class OpenF1HistoricalSessionProvider(
                     return new HistoricalInterval(item.Date, item.DriverNumber, leaderSeconds, leaderLaps, aheadSeconds, aheadLaps);
                 })
                 .ToArray();
-            return new HistoricalCatalog<HistoricalInterval>(Source, timeProvider.GetUtcNow(), intervals);
-        })!;
+        return new HistoricalCatalog<HistoricalInterval>(Source, timeProvider.GetUtcNow(), intervals);
     }
 
     // OpenF1 reports a gap as seconds (number) or as text such as "+1 LAP".
@@ -377,6 +445,13 @@ public sealed class OpenF1HistoricalSessionProvider(
     {
         if (toUtc <= fromUtc || toUtc - fromUtc > TimeSpan.FromMinutes(3))
             throw new ArgumentOutOfRangeException(nameof(toUtc), "Position and telemetry requests must cover no more than three minutes.");
+    }
+
+    private static string WindowPath(string endpoint, int sessionKey, int? driverNumber, DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        var driver = driverNumber is null ? string.Empty : $"&driver_number={driverNumber}";
+        return $"{endpoint}?session_key={sessionKey}{driver}" +
+            $"&date%3E%3D{Uri.EscapeDataString(FormatDate(fromUtc))}&date%3C{Uri.EscapeDataString(FormatDate(toUtc))}";
     }
 
     private static string FormatDate(DateTimeOffset value) =>
@@ -476,6 +551,21 @@ public sealed class OpenF1HistoricalSessionProvider(
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             ? uri.AbsoluteUri
             : null;
+
+    // Clips are played straight from F1's live timing server; anything else is dropped.
+    private static string? SafeRadioUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        uri.Scheme == Uri.UriSchemeHttps &&
+        uri.Host.Equals("livetiming.formula1.com", StringComparison.OrdinalIgnoreCase) &&
+        uri.AbsolutePath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
+            ? uri.AbsoluteUri
+            : null;
+
+    private sealed record OpenF1TeamRadio(
+        [property: JsonPropertyName("session_key")] int SessionKey,
+        [property: JsonPropertyName("date")] DateTimeOffset Date,
+        [property: JsonPropertyName("driver_number")] int DriverNumber,
+        [property: JsonPropertyName("recording_url")] string? RecordingUrl);
 
     private sealed record OpenF1Lap(
         [property: JsonPropertyName("driver_number")] int DriverNumber,

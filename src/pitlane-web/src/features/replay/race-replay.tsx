@@ -1,26 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Activity,
-  Flag,
-  Pause,
-  Play,
-  Maximize2,
-  Minimize2,
-  RotateCcw,
-  SkipBack,
-  SkipForward,
-} from 'lucide-react'
+import { Activity, Flag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { accentStyle } from '@/lib/accent'
 import {
   DriverCard,
   TelemetryPanel,
   type AeroContext,
 } from '@/features/replay/telemetry-panel'
 import '@/features/replay/replay-visuals.css'
+import { ControlDeck, type DeckMarker } from '@/features/replay/control-deck'
+import {
+  formatClock,
+  formatElapsed,
+  formatLapTime,
+} from '@/features/replay/format'
 import { TyreGraphic, TyreLoader } from '@/features/replay/tyre'
 import { compoundColour } from '@/features/replay/tyre-colours'
+import { RadioNowPlaying, type RadioContext } from '@/features/replay/radio'
+import { useRadioPlayer } from '@/features/replay/radio-player'
 import {
   getCarData,
   getClassification,
@@ -28,10 +27,12 @@ import {
   getRaceControl,
   getRacePositions,
   getSessionLaps,
+  saveSessionArchive,
   getSessionDrivers,
   getSessionPitStops,
   getSessionResults,
   getSessionStints,
+  getTeamRadio,
   type HistoricalCarSample,
   type HistoricalClassificationChange,
   type HistoricalDriver,
@@ -62,7 +63,11 @@ import {
   placeDriverLabels,
   removeSharedStationaryPositions,
   ReplayClock,
+  recordedDurationMs,
+  trackStatusBands,
   retimeAlongPath,
+  radioClips,
+  type RadioClip,
   pitLaneTraceCandidates,
   startFinishEstimate,
   retirementTimes,
@@ -74,6 +79,8 @@ import {
 } from '@/features/replay/replay-engine'
 
 const WINDOW_MS = 180_000
+/** The API only saves sessions that ended at least six hours ago. */
+const ARCHIVE_SETTLE_MS = 6 * 3_600_000
 const STALE_MS = 30 * 60_000
 const GC_MS = 15 * 60_000
 const NO_DRIVERS: HistoricalDriver[] = []
@@ -104,168 +111,67 @@ function utc(value: number) {
   return new Date(value).toISOString()
 }
 
-function formatClock(value: number) {
-  if (!Number.isFinite(value)) return '—'
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZone: 'UTC',
-    timeZoneName: 'short',
-  }).format(value)
-}
-
-function formatElapsed(value: number) {
-  const totalSeconds = Math.max(0, Math.floor(value / 1_000))
-  const hours = Math.floor(totalSeconds / 3_600)
-  const minutes = Math.floor((totalSeconds % 3_600) / 60)
-  const seconds = totalSeconds % 60
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    : `${minutes}:${String(seconds).padStart(2, '0')}`
-}
-
-type ReplayTimelineEvent = {
-  id: string
-  timeMs: number
-  kind:
-    | 'lap'
-    | 'pit-entry'
-    | 'pit-exit'
-    | 'pit-stop'
-    | 'flag-yellow'
-    | 'flag-red'
-    | 'safety-car'
-  label: string
-  detail: string
-}
-
-// Session-wide race control markers: yellow/red flags and SC/VSC deployments.
-function raceControlTimelineEvents(
-  events: RaceControlEvent[],
-  startMs: number,
-  durationMs: number,
-): ReplayTimelineEvent[] {
-  const markers: ReplayTimelineEvent[] = []
-  for (const [index, { timeMs, message }] of events.entries()) {
-    if (timeMs < startMs || timeMs > startMs + durationMs) continue
-    const flag = message.flag?.toUpperCase() ?? ''
-    const text = message.message.toUpperCase()
-    const base = {
-      id: `rc-${timeMs}-${index}`,
-      timeMs,
-      detail: message.message,
-    }
-    if (flag === 'YELLOW' || flag === 'DOUBLE YELLOW')
-      markers.push({
-        ...base,
-        kind: 'flag-yellow',
-        label: flag === 'DOUBLE YELLOW' ? 'Double yellow' : 'Yellow flag',
-      })
-    else if (flag === 'RED')
-      markers.push({ ...base, kind: 'flag-red', label: 'Red flag' })
-    else if (text.includes('VIRTUAL SAFETY CAR DEPLOYED'))
-      markers.push({ ...base, kind: 'safety-car', label: 'Virtual safety car' })
-    else if (text.includes('SAFETY CAR DEPLOYED'))
-      markers.push({ ...base, kind: 'safety-car', label: 'Safety car' })
-  }
-  return markers
-}
-
-function timelineEventsForDriver(
+/** The selected driver's pit stops, placed at the estimated lane entry. */
+function pitMarkers(
   driverNumber: number | undefined,
-  laps: HistoricalLap[],
   pitStops: HistoricalPitStop[],
   startMs: number,
   durationMs: number,
-): ReplayTimelineEvent[] {
+): DeckMarker[] {
   if (driverNumber === undefined || durationMs <= 0) return []
-  const events: ReplayTimelineEvent[] = []
-  for (const lap of laps) {
-    if (lap.driverNumber !== driverNumber || !lap.dateStart) continue
-    const timeMs = Date.parse(lap.dateStart)
-    if (
-      !Number.isFinite(timeMs) ||
-      (lap.lapNumber === 1 && timeMs - startMs <= 1_000) ||
-      timeMs < startMs ||
-      timeMs > startMs + durationMs
-    )
-      continue
-    events.push({
-      id: `lap-${lap.lapNumber}-${timeMs}`,
-      timeMs,
-      kind: 'lap',
-      label: `Lap ${lap.lapNumber}`,
-      detail:
-        lap.lapDuration === null
-          ? 'Lap boundary'
-          : `Lap · ${formatLapTime(lap.lapDuration)}`,
-    })
-  }
+  const markers: DeckMarker[] = []
   for (const [index, stop] of pitStops.entries()) {
     if (stop.driverNumber !== driverNumber) continue
     const stopTimeMs = Date.parse(stop.date)
     if (!Number.isFinite(stopTimeMs)) continue
-    if (stop.laneDuration !== null && Number.isFinite(stop.laneDuration)) {
-      const entryMs = stopTimeMs - stop.laneDuration * 1_000
-      if (entryMs >= startMs && entryMs <= startMs + durationMs)
-        events.push({
-          id: `pit-entry-${stopTimeMs}-${index}`,
-          timeMs: entryMs,
-          kind: 'pit-entry',
-          label: 'Pit lane entry',
-          detail: `Estimated entry · lap ${stop.lapNumber ?? 'unknown'}`,
-        })
-      if (stopTimeMs >= startMs && stopTimeMs <= startMs + durationMs)
-        events.push({
-          id: `pit-exit-${stopTimeMs}-${index}`,
-          timeMs: stopTimeMs,
-          kind: 'pit-exit',
-          label: 'Pit lane exit',
-          detail: `Estimated exit · ${formatPitDuration(stop.laneDuration)}`,
-        })
-    } else if (stopTimeMs >= startMs && stopTimeMs <= startMs + durationMs) {
-      events.push({
-        id: `pit-stop-${stopTimeMs}-${index}`,
-        timeMs: stopTimeMs,
-        kind: 'pit-stop',
-        label: 'Pit stop recorded',
-        detail: `Pit stop · lap ${stop.lapNumber ?? 'unknown'}`,
-      })
-    }
+    const hasLane =
+      stop.laneDuration !== null && Number.isFinite(stop.laneDuration)
+    const timeMs = hasLane
+      ? stopTimeMs - stop.laneDuration! * 1_000
+      : stopTimeMs
+    if (timeMs < startMs || timeMs > startMs + durationMs) continue
+    markers.push({
+      id: `pit-${stopTimeMs}-${index}`,
+      timeMs,
+      kind: 'pit',
+      label: `pit stop${stop.lapNumber ? `, lap ${stop.lapNumber}` : ''}`,
+      detail: hasLane
+        ? `Estimated lane entry, ${formatPitDuration(stop.laneDuration)}`
+        : 'Recorded pit time, lane time unavailable',
+    })
   }
-  return events.sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id))
+  return markers
 }
 
-function clusterTimelineEvents(
-  events: ReplayTimelineEvent[],
+function radioMarkers(
+  clips: RadioClip[],
+  drivers: HistoricalDriver[],
+  startMs: number,
   durationMs: number,
-  width: number,
-) {
-  const thresholdMs = Math.max(1_000, (durationMs * 24) / Math.max(width, 280))
-  const clusters: ReplayTimelineEvent[][] = []
-  for (const event of events) {
-    const previous = clusters.at(-1)
-    if (
-      previous &&
-      event.timeMs - previous[previous.length - 1].timeMs <= thresholdMs
+): DeckMarker[] {
+  const acronyms = new Map(
+    drivers.map((driver) => [driver.driverNumber, driver.nameAcronym]),
+  )
+  return clips
+    .filter(
+      (clip) => clip.timeMs >= startMs && clip.timeMs <= startMs + durationMs,
     )
-      previous.push(event)
-    else clusters.push([event])
-  }
-  return clusters
+    .map((clip) => {
+      const name = acronyms.get(clip.driverNumber) ?? `#${clip.driverNumber}`
+      return {
+        id: clip.id,
+        timeMs: clip.timeMs,
+        kind: 'radio' as const,
+        label: `${name} team radio`,
+        detail: `Team radio from ${name}`,
+      }
+    })
 }
 
 function formatPitDuration(value: number | null) {
   return value === null || !Number.isFinite(value)
     ? 'Duration unavailable'
     : `${value.toFixed(1)} s lane time`
-}
-
-function formatLapTime(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return '—'
-  const minutes = Math.floor(value / 60)
-  return `${minutes}:${(value - minutes * 60).toFixed(3).padStart(6, '0')}`
 }
 
 type TowerMode = 'timing' | 'compact'
@@ -397,32 +303,25 @@ function currentOrder(
 export function RaceReplay({ session }: { session: RaceSession }) {
   const startMs = Date.parse(session.dateStart)
   const endMs = session.dateEnd ? Date.parse(session.dateEnd) : NaN
-  const durationMs = endMs - startMs
-  const validDuration = Number.isFinite(durationMs) && durationMs > 0
+  // OpenF1's end is the scheduled slot (two hours for every race). It only
+  // sizes the replay until recorded laps arrive; see recordedDurationMs.
+  const scheduledMs = endMs - startMs
+  const validSchedule = Number.isFinite(scheduledMs) && scheduledMs > 0
   const clock = useMemo(
-    () => new ReplayClock(startMs, validDuration ? durationMs : 0),
-    [durationMs, startMs, validDuration],
+    () => new ReplayClock(startMs, validSchedule ? scheduledMs : 0),
+    [scheduledMs, startMs, validSchedule],
   )
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [windowIndex, setWindowIndex] = useState(0)
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null)
   const [classificationIndex, setClassificationIndex] = useState(-1)
-  const [timelineWidth, setTimelineWidth] = useState(720)
-  const [openEventCluster, setOpenEventCluster] = useState<string | null>(null)
   const [mapSize, setMapSize] = useState<MapSize>(DEFAULT_MAP_SIZE)
   const [immersive, setImmersive] = useState(false)
   const [towerMode, setTowerMode] = useState<TowerMode>(readTowerMode)
   const rangeRef = useRef<HTMLInputElement>(null)
-  const timelineRef = useRef<HTMLDivElement>(null)
-  const timeRef = useRef<HTMLSpanElement>(null)
-  const elapsedRef = useRef<HTMLSpanElement>(null)
   const lapRef = useRef<HTMLSpanElement>(null)
-  const timelineLapRef = useRef<HTMLSpanElement>(null)
   const lapTimeRef = useRef<HTMLElement>(null)
-  const timelineLapTimeRef = useRef<HTMLElement>(null)
-  const timelineProgressRef = useRef<HTMLDivElement>(null)
-  const eventCursorRef = useRef<HTMLSpanElement>(null)
   const tyreNodes = useRef(new Map<number, HTMLSpanElement>())
   const statusNodes = useRef(new Map<number, HTMLSpanElement>())
   const timingNodes = useRef(new Map<number, HTMLSpanElement>())
@@ -433,12 +332,6 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   const playStateRef = useRef(false)
   const windowIndexRef = useRef(0)
   const initialSampleSeekApplied = useRef(false)
-  const startWindow = validDuration
-    ? windowBounds(startMs, durationMs, windowIndex)
-    : null
-  const endWindow = validDuration
-    ? windowBounds(startMs, durationMs, windowIndex + 1)
-    : null
 
   const driversQuery = useQuery({
     queryKey: ['historical-drivers', session.sessionKey],
@@ -454,6 +347,23 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     gcTime: GC_MS,
     retry: false,
   })
+  // Finished sessions are saved on the API's disk in the background, so later
+  // windows (and later visits) load from this computer instead of OpenF1.
+  const [openedAtMs] = useState(() => Date.now())
+  const finishedForArchive =
+    Number.isFinite(endMs) && openedAtMs > endMs + ARCHIVE_SETTLE_MS
+  const archiveQuery = useQuery({
+    queryKey: ['session-archive', session.sessionKey],
+    queryFn: ({ signal }) => saveSessionArchive(session.sessionKey, signal),
+    enabled: finishedForArchive,
+    staleTime: Infinity,
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.state === 'queued' ||
+      query.state.data?.state === 'saving'
+        ? 3_000
+        : false,
+  })
   const sessionLapsQuery = useQuery({
     queryKey: ['historical-session-laps', session.sessionKey],
     queryFn: ({ signal }) => getSessionLaps(session.sessionKey, signal),
@@ -461,6 +371,26 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     gcTime: GC_MS,
     retry: false,
   })
+  const recorded = useMemo(
+    () =>
+      recordedDurationMs(
+        sessionLapsQuery.data?.items ?? NO_LAPS,
+        startMs,
+        validSchedule ? scheduledMs : 0,
+      ),
+    [scheduledMs, sessionLapsQuery.data, startMs, validSchedule],
+  )
+  const durationMs = recorded.durationMs
+  const validDuration = Number.isFinite(durationMs) && durationMs > 0
+  useEffect(() => {
+    clock.setDuration(validDuration ? durationMs : 0)
+  }, [clock, durationMs, validDuration])
+  const startWindow = validDuration
+    ? windowBounds(startMs, durationMs, windowIndex)
+    : null
+  const endWindow = validDuration
+    ? windowBounds(startMs, durationMs, windowIndex + 1)
+    : null
   // One fixed window defines the circuit outline; car positions still come
   // from the active replay window. It starts at the first recorded lap 2, when
   // cars are at racing speed. A fixed minute offset fails on delayed starts:
@@ -564,6 +494,18 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     gcTime: GC_MS,
     retry: false,
   })
+  const teamRadioQuery = useQuery({
+    queryKey: ['historical-team-radio', session.sessionKey],
+    queryFn: ({ signal }) => getTeamRadio(session.sessionKey, signal),
+    staleTime: STALE_MS,
+    gcTime: GC_MS,
+    retry: false,
+  })
+  const clips = useMemo(
+    () => radioClips(teamRadioQuery.data?.items ?? []),
+    [teamRadioQuery.data],
+  )
+  const radioPlayer = useRadioPlayer(clock, clips)
   const aero = useMemo<AeroContext>(
     () => ({
       modernRules: new Date(startMs).getUTCFullYear() >= 2026,
@@ -888,14 +830,17 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   )
   const leaderNumber = orderedDrivers.find(({ position }) => position === 1)
     ?.driver.driverNumber
-  const changeTowerMode = useCallback((mode: TowerMode) => {
-    setTowerMode(mode)
-    try {
-      localStorage.setItem(TOWER_MODE_KEY, mode)
-    } catch {
-      // Storage can be blocked; the choice then lasts for this visit only.
-    }
-  }, [])
+  const changeTowerMode = useCallback(
+    (mode: TowerMode) => {
+      setTowerMode(mode)
+      try {
+        localStorage.setItem(TOWER_MODE_KEY, mode)
+      } catch {
+        // Storage can be blocked; the choice then lasts for this visit only.
+      }
+    },
+    [setTowerMode],
+  )
   const normalizedCarData = useMemo(
     () => normalizeCarSamples(carData.data?.items ?? NO_CAR_DATA),
     [carData.data],
@@ -946,30 +891,42 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     }),
     [allLaps, defaultRival, drivers, pitStops, raceControlEvents, retiredAt],
   )
-  const timelineEvents = useMemo(
+  const radioContext: RadioContext = {
+    clips,
+    status: teamRadioQuery.isPending
+      ? 'loading'
+      : teamRadioQuery.isError
+        ? 'unavailable'
+        : 'ready',
+    player: radioPlayer,
+    drivers,
+    startMs,
+    onSeek: (elapsedMs: number) =>
+      clock.seek(Math.max(0, Math.min(elapsedMs, durationMs))),
+  }
+  const deckMarkers = useMemo(
     () =>
       [
-        ...timelineEventsForDriver(
+        ...pitMarkers(
           selectedDriver?.driverNumber,
-          allLaps,
           pitStops,
           startMs,
           durationMs,
         ),
-        ...raceControlTimelineEvents(raceControlEvents, startMs, durationMs),
+        ...radioMarkers(clips, drivers, startMs, durationMs),
       ].sort((a, b) => a.timeMs - b.timeMs),
     [
-      allLaps,
+      clips,
+      drivers,
       durationMs,
       pitStops,
-      raceControlEvents,
       selectedDriver?.driverNumber,
       startMs,
     ],
   )
-  const eventClusters = useMemo(
-    () => clusterTimelineEvents(timelineEvents, durationMs, timelineWidth),
-    [durationMs, timelineEvents, timelineWidth],
+  const statusBands = useMemo(
+    () => trackStatusBands(raceControlEvents, startMs + durationMs),
+    [durationMs, raceControlEvents, startMs],
   )
   const selectedResult = selectedDriver
     ? resultsByDriver.get(selectedDriver.driverNumber)
@@ -1021,16 +978,6 @@ export function RaceReplay({ session }: { session: RaceSession }) {
   const lapAndTyreReady = sessionLapsQuery.isSuccess && stintsQuery.isSuccess
 
   useEffect(() => {
-    const element = timelineRef.current
-    if (!element) return
-    const observer = new ResizeObserver(([entry]) => {
-      setTimelineWidth(entry.contentRect.width)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
     return () => clock.dispose()
   }, [clock])
 
@@ -1078,11 +1025,6 @@ export function RaceReplay({ session }: { session: RaceSession }) {
 
   useEffect(() => {
     const unsubscribe = clock.subscribe((snapshot) => {
-      if (rangeRef.current) rangeRef.current.value = String(snapshot.elapsedMs)
-      if (timeRef.current)
-        timeRef.current.textContent = formatClock(snapshot.timestampMs)
-      if (elapsedRef.current)
-        elapsedRef.current.textContent = formatElapsed(snapshot.elapsedMs)
       const lap = selectedDriver
         ? lapAt(allLaps, selectedDriver.driverNumber, snapshot.timestampMs)
         : null
@@ -1091,14 +1033,8 @@ export function RaceReplay({ session }: { session: RaceSession }) {
           ? `Lap ${lap.lapNumber} / ${totalLapsByDriver.get(lap.driverNumber) || '—'}`
           : `${formatElapsed(snapshot.elapsedMs)} elapsed`
       }
-      if (timelineLapRef.current)
-        timelineLapRef.current.textContent = lap
-          ? `LAP ${lap.lapNumber} / ${totalLapsByDriver.get(lap.driverNumber) || '—'}`
-          : 'LAP DATA UNAVAILABLE'
       if (lapTimeRef.current)
         lapTimeRef.current.textContent = formatLapTime(lap?.lapDuration)
-      if (timelineLapTimeRef.current)
-        timelineLapTimeRef.current.textContent = formatLapTime(lap?.lapDuration)
       for (const [driverNumber, node] of tyreNodes.current) {
         const reading = tyreAtReplayTime(
           stints,
@@ -1261,14 +1197,6 @@ export function RaceReplay({ session }: { session: RaceSession }) {
               : `${compound} · ${reading?.certainty === 'starting' ? 'STARTING' : 'LAST REPORTED'}`
             : 'Unavailable'
       }
-      const width = Math.max(
-        0,
-        Math.min((snapshot.elapsedMs / durationMs) * 100, 100),
-      )
-      if (timelineProgressRef.current)
-        timelineProgressRef.current.style.width = `${width}%`
-      if (eventCursorRef.current)
-        eventCursorRef.current.style.left = `${width}%`
       const nextWindow = Math.floor(snapshot.elapsedMs / WINDOW_MS)
       if (windowIndexRef.current !== nextWindow) {
         windowIndexRef.current = nextWindow
@@ -1330,7 +1258,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
           ? current
           : next,
       ),
-    [],
+    [setMapSize],
   )
   const restart = useCallback(() => {
     clock.pause()
@@ -1433,6 +1361,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
     <section
       className={`race-replay panel ${immersive ? 'immersive' : ''}`}
       aria-label="Race replay"
+      style={accentStyle(selectedDriver?.teamColour)}
     >
       {loadComplete ? null : (
         <div className="replay-progress-strip">
@@ -1503,7 +1432,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
           data-mode={towerMode}
         >
           <div className="tower-title">
-            <span>CLASSIFICATION</span>
+            <span>Running order</span>
             <div
               className="tower-mode-switch"
               role="radiogroup"
@@ -1526,16 +1455,16 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             </strong>
           </div>
           <div className="race-tower-heading">
-            <strong>POS</strong>
-            <span>DRIVER</span>
-            <span>TYRE</span>
+            <strong>Pos</strong>
+            <span>Driver</span>
+            <span>Tyre</span>
             <span className="race-tower-timing-heading">
-              <span>INT</span>
-              <span>GAP</span>
-              <span>LAST</span>
-              <span>BEST</span>
+              <span>Int</span>
+              <span>Gap</span>
+              <span>Last</span>
+              <span>Best</span>
             </span>
-            <span>STATUS</span>
+            <span>Status</span>
             <span aria-label="Final result" />
           </div>
           {driversQuery.isPending ? (
@@ -1650,6 +1579,15 @@ export function RaceReplay({ session }: { session: RaceSession }) {
           circuitPaths={circuitPaths}
           startFinish={startFinish}
           pitLane={pitLane}
+          radioNow={
+            radioPlayer.nowPlaying
+              ? {
+                  clip: radioPlayer.nowPlaying,
+                  progress: radioPlayer.progress,
+                  onStop: radioPlayer.stop,
+                }
+              : null
+          }
           pitLaneMissing={
             pitLaneTrace.isSuccess && pitLaneTrace.data.length === 0
           }
@@ -1727,6 +1665,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             aero={aero}
             selected={selectedDriver}
             compare={compareContext}
+            radio={radioContext}
           />
           <div className="telemetry-lap-line">
             <span ref={lapRef}>0:00 elapsed</span>
@@ -1739,13 +1678,13 @@ export function RaceReplay({ session }: { session: RaceSession }) {
             aria-label="Selected driver pit stops"
           >
             <div className="pit-stop-log-heading">
-              <strong>PIT STOPS</strong>
+              <strong>Pit stops</strong>
               <span>
                 {pitStopsQuery.isPending
                   ? 'LOADING'
                   : pitStopsQuery.isError
                     ? 'UNAVAILABLE'
-                    : `${pitStops.filter((stop) => stop.driverNumber === selectedDriver?.driverNumber).length} RECORDED`}
+                    : `${pitStops.filter((stop) => stop.driverNumber === selectedDriver?.driverNumber).length} recorded`}
               </span>
             </div>
             {pitStopsQuery.isError ? (
@@ -1803,7 +1742,7 @@ export function RaceReplay({ session }: { session: RaceSession }) {
                             <span className="pit-stop-meta">
                               <span>
                                 {Number.isFinite(visitStartMs)
-                                  ? `${formatClock(visitStartMs)} ENTRY`
+                                  ? `${formatClock(visitStartMs)} entry`
                                   : 'ENTRY TIME UNAVAILABLE'}
                               </span>
                               <span>
@@ -1826,320 +1765,55 @@ export function RaceReplay({ session }: { session: RaceSession }) {
         </aside>
       </div>
 
-      <footer className="race-control-deck" aria-label="Replay controls">
-        <div className="race-deck-header">
-          <div className="race-deck-timing">
-            <div className="race-deck-time-main">
-              <span className="race-deck-kicker">SESSION TIME · UTC</span>
-              <strong ref={timeRef}>{formatClock(startMs)}</strong>
-            </div>
-            <div className="race-deck-time-meta">
-              <span>
-                ELAPSED <b ref={elapsedRef}>0:00</b>
-              </span>
-              <span>
-                DURATION <b>{formatElapsed(durationMs)}</b>
-              </span>
-              <span ref={timelineLapRef}>LAP —</span>
-              <span>
-                LAP TIME <b ref={timelineLapTimeRef}>—</b>
-              </span>
-            </div>
-          </div>
-          <div className="race-deck-controls">
-            <Button
-              size="small"
-              variant="secondary"
-              aria-label={
-                lightsOutElapsedMs !== null
-                  ? 'Restart from lights out'
-                  : 'Restart replay'
-              }
-              title={
-                lightsOutElapsedMs !== null
-                  ? 'Restart from lights out (Home)'
-                  : 'Restart (Home)'
-              }
-              onClick={restart}
+      <ControlDeck
+        clock={clock}
+        startMs={startMs}
+        durationMs={validDuration ? durationMs : 0}
+        finishMs={recorded.finishMs}
+        playing={playing}
+        canPlay={canPlay}
+        speed={speed}
+        onSpeedChange={(value) => {
+          setSpeed(value)
+          clock.setSpeed(value)
+        }}
+        immersive={immersive}
+        onToggleImmersive={() => setImmersive((value) => !value)}
+        onRestart={restart}
+        restartsAtLightsOut={lightsOutElapsedMs !== null}
+        laps={availableLapStarts}
+        lapsState={
+          sessionLapsQuery.isPending
+            ? 'loading'
+            : sessionLapsQuery.isError
+              ? 'unavailable'
+              : availableLapStarts.length
+                ? 'ready'
+                : 'empty'
+        }
+        totalLaps={
+          selectedDriver
+            ? (totalLapsByDriver.get(selectedDriver.driverNumber) ?? null)
+            : null
+        }
+        bands={statusBands}
+        markers={deckMarkers}
+        rangeRef={rangeRef}
+        archive={archiveQuery.data}
+        notice={
+          positions.isError ||
+          (!positions.isPending && movingSamples.length === 0) ? (
+            <p
+              className="deck-notice"
+              role={positions.isError ? 'alert' : 'status'}
             >
-              <RotateCcw size={14} aria-hidden="true" />
-            </Button>
-            <Button
-              size="small"
-              variant="secondary"
-              className="race-skip-control"
-              aria-label="Back 10 seconds"
-              aria-keyshortcuts="ArrowLeft"
-              title="Back 10 s (←, Shift+← for 60 s)"
-              onClick={() => seek(clock.getSnapshot().elapsedMs - 10_000)}
-            >
-              <SkipBack size={16} aria-hidden="true" />
-              <span>10</span>
-            </Button>
-            <Button
-              size="small"
-              variant="default"
-              className="race-play-control"
-              aria-label={playing ? 'Pause replay' : 'Play replay'}
-              aria-keyshortcuts="Space"
-              title={playing ? 'Pause (Space)' : 'Play (Space)'}
-              // Pausing must always work, even while a new window loads.
-              disabled={!playing && !canPlay}
-              onClick={() => (playing ? clock.pause() : clock.play())}
-            >
-              {playing ? (
-                <Pause size={20} aria-hidden="true" />
-              ) : (
-                <Play size={20} aria-hidden="true" />
-              )}
-            </Button>
-            <Button
-              size="small"
-              variant="secondary"
-              className="race-skip-control"
-              aria-label="Forward 10 seconds"
-              aria-keyshortcuts="ArrowRight"
-              title="Forward 10 s (→, Shift+→ for 60 s)"
-              onClick={() => seek(clock.getSnapshot().elapsedMs + 10_000)}
-            >
-              <SkipForward size={16} aria-hidden="true" />
-              <span>10</span>
-            </Button>
-            <label className="race-speed-control">
-              <span>SPEED</span>
-              <select
-                aria-label="Replay speed"
-                value={speed}
-                onChange={(event) => {
-                  const value = Number(event.target.value)
-                  setSpeed(value)
-                  clock.setSpeed(value)
-                }}
-              >
-                <option value="0.5">0.5×</option>
-                <option value="1">1×</option>
-                <option value="2">2×</option>
-                <option value="5">5×</option>
-                <option value="10">10×</option>
-              </select>
-            </label>
-            <label className="race-lap-jump-control">
-              <span>JUMP TO LAP</span>
-              <select
-                aria-label="Jump to lap"
-                defaultValue=""
-                disabled={
-                  !sessionLapsQuery.isSuccess || availableLapStarts.length === 0
-                }
-                onChange={(event) => {
-                  const lapNumber = Number(event.currentTarget.value)
-                  const lap = availableLapStarts.find(
-                    (item) => item.lapNumber === lapNumber,
-                  )
-                  event.currentTarget.value = ''
-                  if (lap?.dateStart)
-                    seek(Math.max(0, Date.parse(lap.dateStart) - startMs))
-                }}
-              >
-                {sessionLapsQuery.isSuccess && availableLapStarts.length ? (
-                  <>
-                    <option value="" disabled>
-                      SELECT LAP
-                    </option>
-                    {availableLapStarts.map((lap) => (
-                      <option
-                        key={`${lap.driverNumber}-${lap.lapNumber}-${lap.dateStart}`}
-                        value={lap.lapNumber}
-                      >
-                        LAP {String(lap.lapNumber).padStart(2, '0')}
-                      </option>
-                    ))}
-                  </>
-                ) : !sessionLapsQuery.isSuccess ? (
-                  <option value="">
-                    {sessionLapsQuery.isPending ? 'LOADING' : 'UNAVAILABLE'}
-                  </option>
-                ) : (
-                  <option value="">NO LAP DATA</option>
-                )}
-              </select>
-            </label>
-            <Button
-              size="small"
-              variant="secondary"
-              className="race-fullscreen-control"
-              aria-pressed={immersive}
-              aria-keyshortcuts="F"
-              aria-label={immersive ? 'Exit full screen' : 'Full screen'}
-              title={
-                immersive ? 'Exit full screen (F or Esc)' : 'Full screen (F)'
-              }
-              onClick={() => setImmersive((value) => !value)}
-            >
-              {immersive ? (
-                <Minimize2 size={16} aria-hidden="true" />
-              ) : (
-                <Maximize2 size={16} aria-hidden="true" />
-              )}
-            </Button>
-          </div>
-        </div>
-        <div className="race-timeline-area">
-          <div className="race-timeline-rail" ref={timelineRef}>
-            <div className="race-timeline-base" />
-            <div ref={timelineProgressRef} className="race-timeline-progress" />
-            <span ref={eventCursorRef} className="race-timeline-playhead" />
-            <div
-              className="race-timeline-events"
-              aria-label="Recorded replay events"
-            >
-              {eventClusters.map((cluster) => {
-                const clusterKey = cluster.map((event) => event.id).join('|')
-                const event = cluster[0]
-                const position = Math.max(
-                  0,
-                  Math.min(((event.timeMs - startMs) / durationMs) * 100, 100),
-                )
-                if (cluster.length === 1)
-                  return (
-                    <button
-                      key={clusterKey}
-                      type="button"
-                      className={`race-timeline-event ${event.kind}`}
-                      style={{ left: `${position}%` }}
-                      title={`${event.label} · ${formatElapsed(event.timeMs - startMs)} · ${event.detail}`}
-                      aria-label={`Jump to ${event.label}, ${formatElapsed(event.timeMs - startMs)}`}
-                      onClick={() => seek(event.timeMs - startMs)}
-                    >
-                      <span aria-hidden="true">
-                        {event.kind === 'lap'
-                          ? String(event.label.replace('Lap ', ''))
-                          : event.kind === 'pit-entry'
-                            ? 'IN'
-                            : event.kind === 'pit-exit'
-                              ? 'OUT'
-                              : event.kind === 'flag-yellow'
-                                ? 'Y'
-                                : event.kind === 'flag-red'
-                                  ? 'R'
-                                  : event.kind === 'safety-car'
-                                    ? event.label === 'Safety car'
-                                      ? 'SC'
-                                      : 'VSC'
-                                    : 'P'}
-                      </span>
-                    </button>
-                  )
-                return (
-                  <div
-                    className="race-timeline-cluster"
-                    key={clusterKey}
-                    style={{ left: `${position}%` }}
-                  >
-                    <button
-                      type="button"
-                      className="race-timeline-cluster-trigger"
-                      title={cluster
-                        .map(
-                          (item) =>
-                            `${item.label} · ${formatElapsed(item.timeMs - startMs)}`,
-                        )
-                        .join('\n')}
-                      aria-label={`${cluster.length} recorded events near ${formatElapsed(event.timeMs - startMs)}`}
-                      aria-expanded={openEventCluster === clusterKey}
-                      onClick={() =>
-                        setOpenEventCluster((open) =>
-                          open === clusterKey ? null : clusterKey,
-                        )
-                      }
-                    >
-                      {cluster.length}
-                    </button>
-                    {openEventCluster === clusterKey ? (
-                      <div
-                        className={`race-timeline-event-menu ${position > 50 ? 'align-right' : 'align-left'}`}
-                      >
-                        {cluster.map((item) => (
-                          <button
-                            type="button"
-                            key={item.id}
-                            className={`race-timeline-menu-item ${item.kind}`}
-                            onClick={() => {
-                              seek(item.timeMs - startMs)
-                              setOpenEventCluster(null)
-                            }}
-                          >
-                            <span>{item.label}</span>
-                            <small>
-                              {formatElapsed(item.timeMs - startMs)} ·{' '}
-                              {item.detail}
-                            </small>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-            <input
-              ref={rangeRef}
-              className="race-timeline-scrubber"
-              type="range"
-              min="0"
-              max={durationMs}
-              step="1"
-              defaultValue="0"
-              aria-label="Seek through session replay"
-              onInput={(event) => seek(Number(event.currentTarget.value))}
-            />
-          </div>
-          <div className="race-timeline-foot">
-            <span>00:00</span>
-            <span>
-              {eventClusters.length
-                ? `${timelineEvents.length} EVENTS`
-                : 'RECORDED TIMELINE'}
-            </span>
-            <span>{formatElapsed(durationMs)}</span>
-          </div>
-          {timelineEvents.length ? (
-            <div className="race-timeline-key" aria-label="Timeline event key">
-              {[...new Set(timelineEvents.map((event) => event.kind))].map(
-                (kind) => (
-                  <span key={kind} className={kind}>
-                    <i aria-hidden="true" />
-                    {kind === 'lap'
-                      ? 'LAP'
-                      : kind === 'pit-entry'
-                        ? 'PIT IN · EST.'
-                        : kind === 'pit-exit'
-                          ? 'PIT OUT · EST.'
-                          : kind === 'flag-yellow'
-                            ? 'YELLOW FLAG'
-                            : kind === 'flag-red'
-                              ? 'RED FLAG'
-                              : kind === 'safety-car'
-                                ? 'SC / VSC'
-                                : 'PIT STOP'}
-                  </span>
-                ),
-              )}
-            </div>
-          ) : null}
-        </div>
-        {positions.isError ||
-        (!positions.isPending && movingSamples.length === 0) ? (
-          <p
-            className="race-timeline-notice"
-            role={positions.isError ? 'alert' : 'status'}
-          >
-            {positions.isError
-              ? 'Recorded car positions could not be loaded. Retry from the circuit panel.'
-              : 'No recorded car positions are available in this part of the replay.'}
-          </p>
-        ) : null}
-      </footer>
+              {positions.isError
+                ? 'Recorded car positions could not be loaded. Retry from the circuit panel.'
+                : 'No recorded car positions are available in this part of the replay.'}
+            </p>
+          ) : null
+        }
+      />
     </section>
   )
 }
@@ -2210,8 +1884,10 @@ function TrackMap({
   startFinish,
   pitLane,
   pitLaneMissing,
+  radioNow,
 }: {
   pitLaneMissing: boolean
+  radioNow: { clip: RadioClip; progress: number; onStop: () => void } | null
   raceControlEvents: RaceControlEvent[]
   startFinish: { x: number; y: number; angle: number } | null
   pitLane: { points: string; label: { x: number; y: number } } | null
@@ -2290,6 +1966,17 @@ function TrackMap({
       ),
     [drivers, paths],
   )
+  // Ring the car whose radio is playing.
+  const speaking = radioNow?.clip.driverNumber
+  useEffect(() => {
+    const group = groupRef.current
+    if (!group) return
+    for (const node of group.querySelectorAll('[data-driver]'))
+      node.toggleAttribute(
+        'data-speaking',
+        Number(node.getAttribute('data-driver')) === speaking,
+      )
+  }, [speaking, markerDrivers])
 
   // Match the drawing's aspect ratio to the panel so the circuit fills it.
   // Width stays fixed in drawing units so stroke and label sizes keep scale.
@@ -2529,13 +2216,23 @@ function TrackMap({
         aria-live="polite"
         hidden
       />
+      {radioNow ? (
+        <RadioNowPlaying
+          clip={radioNow.clip}
+          driver={drivers.find(
+            (driver) => driver.driverNumber === radioNow.clip.driverNumber,
+          )}
+          progress={radioNow.progress}
+          onStop={radioNow.onStop}
+        />
+      ) : null}
       <div className="race-track-topline">
         <div>
-          <span className="circuit-live-dot" /> CIRCUIT POSITION <b>OPENF1</b>
+          <span className="circuit-live-dot" /> Circuit position <b>OpenF1</b>
         </div>
         <span>
           {track
-            ? 'RECORDED TRACE'
+            ? 'Recorded trace'
             : circuitPending
               ? 'BUILDING CIRCUIT'
               : positionsPending
@@ -2830,13 +2527,13 @@ function TrackMap({
         </p>
       ) : null}
       <div className="circuit-caption">
-        <span>LOCAL X / Y · FITTED WITHOUT DISTORTION</span>
+        <span>Local X/Y, fitted without distortion</span>
         <span>
           {pitLaneMissing
             ? 'PIT LANE NOT IN POSITION FEED'
-            : 'AMBER P BADGE · ACTIVE PIT LANE VISIT'}
+            : 'Amber P marks a car in the pit lane'}
         </span>
-        <span>POSITION DATA MAY HAVE GAPS OVER 1.5 S</span>
+        <span>Position data may have gaps over 1.5 s</span>
       </div>
     </section>
   )

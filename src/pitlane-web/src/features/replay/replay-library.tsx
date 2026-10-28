@@ -1,14 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  CalendarDays,
-  Check,
-  ChevronRight,
-  ExternalLink,
-  MapPin,
-  Search,
-  SlidersHorizontal,
-} from 'lucide-react'
+import { CalendarDays, Check, ExternalLink, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,6 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { WeatherPanel } from '@/features/replay/weather-panel'
+import { SeasonHome } from '@/features/replay/season-home'
+import { numberRounds, seasons } from '@/features/replay/season'
 import {
   getMeetingSessions,
   getMeetings,
@@ -24,7 +18,6 @@ import {
   type RaceSession,
 } from '@/lib/api'
 
-const currentYear = new Date().getUTCFullYear()
 const pageLoadedAtMs = Date.now()
 const RaceReplay = lazy(() =>
   import('@/features/replay/race-replay').then((module) => ({
@@ -48,6 +41,17 @@ function formatDate(value: string, options: Intl.DateTimeFormatOptions) {
   return Number.isNaN(date.getTime())
     ? 'Date unavailable'
     : new Intl.DateTimeFormat(undefined, options).format(date)
+}
+
+function formatRange(start: string, end: string) {
+  const from = new Date(start)
+  const to = new Date(end)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()))
+    return 'Date unavailable'
+  return new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+  }).formatRange(from, to)
 }
 
 function navigate(selection: ReplaySelection) {
@@ -81,14 +85,24 @@ export function ReplayLibrary({ selection }: { selection: ReplaySelection }) {
     refetchOnWindowFocus: false,
     retry: false,
   })
+  const rounds = useMemo(
+    () => numberRounds(meetings.data?.items ?? []),
+    [meetings.data],
+  )
   const visibleMeetings = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase()
-    return (meetings.data?.items ?? []).filter((meeting) =>
+    return rounds.filter(({ meeting }) =>
       `${meeting.meetingName} ${meeting.location} ${meeting.countryName} ${meeting.circuitShortName}`
         .toLocaleLowerCase()
         .includes(normalizedSearch),
     )
-  }, [meetings.data, search])
+  }, [rounds, search])
+  // Open the sheet on the chosen round, or on the latest one already run.
+  const anchorKey =
+    meetingKey ??
+    rounds.findLast(
+      ({ meeting }) => Date.parse(meeting.dateStart) <= pageLoadedAtMs,
+    )?.meeting.meetingKey
   const selectedMeeting = meetings.data?.items.find(
     (meeting) => meeting.meetingKey === meetingKey,
   )
@@ -121,256 +135,199 @@ export function ReplayLibrary({ selection }: { selection: ReplaySelection }) {
 
   return (
     <section className="replay-mode" aria-label="Race replay workspace">
-      <header className="replay-commandbar">
-        <div className="replay-command-copy">
-          <span className="section-kicker">
-            <span /> RACE REPLAY
-          </span>
-          {selectedSession && selectedMeeting ? (
-            <div className="current-event">
-              <h1>{selectedMeeting.meetingName}</h1>
-              <span>{selectedMeeting.circuitShortName}</span>
-              <i />
+      {selectedSession && selectedMeeting ? (
+        <header className="replay-commandbar">
+          <div className="current-event">
+            <h1>{selectedMeeting.meetingName}</h1>
+            <p>
               <span>{selectedSession.sessionName}</span>
-              <small>
+              <span>{selectedMeeting.circuitShortName}</span>
+              <span>
                 {formatDate(selectedSession.dateStart, {
                   day: 'numeric',
-                  month: 'short',
+                  month: 'long',
                   year: 'numeric',
                 })}
-              </small>
-            </div>
-          ) : (
-            <div className="current-event">
-              <h1>Choose a historical session</h1>
-              <span>OpenF1 archive</span>
-            </div>
-          )}
-        </div>
-        <Button
-          className="session-browser-trigger"
-          variant="secondary"
-          onClick={() => setBrowserOpen(true)}
-        >
-          <SlidersHorizontal size={15} aria-hidden="true" />
-          {selectedSession ? 'Change session' : 'Browse sessions'}
-        </Button>
-      </header>
+              </span>
+            </p>
+          </div>
+          <Button
+            className="session-browser-trigger"
+            variant="secondary"
+            onClick={() => setBrowserOpen(true)}
+          >
+            <CalendarDays size={15} aria-hidden="true" />
+            Change session
+          </Button>
+        </header>
+      ) : null}
 
       <Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
         <DialogContent
           className="race-session-dialog"
           aria-describedby="session-browser-description"
         >
-          <div className="session-dialog-heading">
-            <div>
-              <span className="section-kicker">
-                <span /> OPENF1 ARCHIVE
-              </span>
-              <DialogTitle>Find a race weekend</DialogTitle>
-              <DialogDescription id="session-browser-description">
-                Select a completed session. Replay coverage is checked when you
-                open it.
-              </DialogDescription>
-            </div>
-            <label className="season-select">
-              SEASON
-              <select
-                aria-label="Season"
-                value={selection.year}
-                onChange={(event) =>
-                  navigate({
-                    year: Number(event.target.value),
-                    meetingKey: null,
-                    sessionKey: null,
-                  })
-                }
-              >
-                {Array.from(
-                  { length: currentYear - 2022 },
-                  (_, index) => currentYear - index,
-                ).map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="session-browser-grid">
-            <section
-              className="meeting-column"
-              aria-labelledby="meetings-heading"
-            >
-              <div className="browser-section-heading">
-                <h3 id="meetings-heading">Grand Prix & testing</h3>
-                <span>{meetings.data?.items.length ?? '—'}</span>
-              </div>
-              <label className="meeting-search">
-                <Search size={15} aria-hidden="true" />
-                <span className="sr-only">Filter meetings</span>
-                <input
-                  type="search"
-                  name="meeting-search"
-                  autoComplete="off"
-                  placeholder="Find a race or circuit…"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </label>
-              {meetings.isPending ? (
-                <p className="browser-message" role="status">
-                  Loading {selection.year} events…
-                </p>
-              ) : null}
-              {meetings.isError ? (
-                <div className="browser-message" role="alert">
-                  <span>{meetings.error.message}</span>
-                  <Button
-                    size="small"
-                    variant="secondary"
-                    onClick={() => void meetings.refetch()}
-                  >
-                    Retry
-                  </Button>
-                </div>
-              ) : null}
-              {meetings.isSuccess && visibleMeetings.length === 0 ? (
-                <p className="browser-message">No events match your search.</p>
-              ) : null}
-              {meetings.isSuccess ? (
-                <ul
-                  className="meeting-list"
-                  aria-label={`${selection.year} Grand Prix events`}
+          <div className="season-sheet-head">
+            <DialogTitle className="season-title">Choose a session</DialogTitle>
+            <div className="season-tabs" role="group" aria-label="Season">
+              {seasons.map((year) => (
+                <button
+                  key={year}
+                  type="button"
+                  aria-pressed={year === selection.year}
+                  onClick={() =>
+                    navigate({ year, meetingKey: null, sessionKey: null })
+                  }
                 >
-                  {visibleMeetings.map((meeting) => (
-                    <li key={meeting.meetingKey}>
+                  {year}
+                </button>
+              ))}
+            </div>
+            <DialogDescription
+              id="session-browser-description"
+              className="sr-only"
+            >
+              Pick a round, then one of its completed sessions.
+            </DialogDescription>
+          </div>
+          <label className="meeting-search">
+            <Search size={16} aria-hidden="true" />
+            <span className="sr-only">Filter rounds</span>
+            <input
+              type="search"
+              name="meeting-search"
+              autoComplete="off"
+              placeholder="Search races, circuits or countries"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+
+          <div className="season-rounds" aria-live="polite">
+            {meetings.isPending ? (
+              <p className="browser-message" role="status">
+                Loading the {selection.year} calendar…
+              </p>
+            ) : null}
+            {meetings.isError ? (
+              <div className="browser-message" role="alert">
+                <span>{meetings.error.message}</span>
+                <Button
+                  size="small"
+                  variant="secondary"
+                  onClick={() => void meetings.refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : null}
+            {meetings.isSuccess && visibleMeetings.length === 0 ? (
+              <p className="browser-message">
+                {search
+                  ? `Nothing in ${selection.year} matches “${search.trim()}”.`
+                  : `OpenF1 lists no events for ${selection.year} yet.`}
+              </p>
+            ) : null}
+            {meetings.isSuccess ? (
+              <ol
+                className="meeting-list"
+                aria-label={`${selection.year} calendar`}
+              >
+                {visibleMeetings.map(({ meeting, round }) => {
+                  const open = meetingKey === meeting.meetingKey
+                  const upcoming =
+                    Date.parse(meeting.dateStart) > pageLoadedAtMs
+                  return (
+                    <li
+                      key={meeting.meetingKey}
+                      data-open={open || undefined}
+                      data-cancelled={meeting.isCancelled || undefined}
+                      data-upcoming={upcoming || undefined}
+                      ref={
+                        meeting.meetingKey === anchorKey
+                          ? (element) =>
+                              element?.scrollIntoView({ block: 'center' })
+                          : undefined
+                      }
+                    >
                       <button
                         type="button"
-                        className={`meeting-option ${meetingKey === meeting.meetingKey ? 'selected' : ''}`}
-                        aria-pressed={meetingKey === meeting.meetingKey}
+                        className="meeting-option"
+                        aria-expanded={open}
                         onClick={() => selectMeeting(meeting)}
                       >
-                        <span className="meeting-date">
-                          {formatDate(meeting.dateStart, {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                          –
-                          {formatDate(meeting.dateEnd, {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                          {meeting.isCancelled ? ' · Cancelled' : ''}
-                        </span>
+                        <span className="meeting-round">{round}</span>
                         <strong className="meeting-name">
                           {meeting.meetingName}
                         </strong>
                         <span className="meeting-location">
-                          <MapPin size={12} aria-hidden="true" />{' '}
                           {meeting.location}, {meeting.countryName}
                         </span>
-                        {meetingKey === meeting.meetingKey ? (
-                          <Check
-                            className="meeting-chevron"
-                            size={16}
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <ChevronRight
-                            className="meeting-chevron"
-                            size={16}
-                            aria-hidden="true"
-                          />
-                        )}
+                        <span className="meeting-date">
+                          {meeting.isCancelled
+                            ? 'Cancelled'
+                            : formatRange(meeting.dateStart, meeting.dateEnd)}
+                        </span>
                       </button>
+                      {open ? (
+                        <div className="meeting-sessions">
+                          {meeting.isCancelled ? (
+                            <p>This round was cancelled.</p>
+                          ) : sessions.isPending ? (
+                            <p role="status">Loading sessions…</p>
+                          ) : sessions.isError ? (
+                            <p role="alert">
+                              {sessions.error.message}{' '}
+                              <Button
+                                size="small"
+                                variant="secondary"
+                                onClick={() => void sessions.refetch()}
+                              >
+                                Retry
+                              </Button>
+                            </p>
+                          ) : sessions.data?.items.length === 0 ? (
+                            <p>OpenF1 lists no sessions for this round.</p>
+                          ) : (
+                            <div className="session-list">
+                              {sessions.data?.items.map((session) => (
+                                <SessionOption
+                                  key={session.sessionKey}
+                                  session={session}
+                                  selected={
+                                    session.sessionKey === selection.sessionKey
+                                  }
+                                  onSelect={selectSession}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </li>
-                  ))}
-                </ul>
-              ) : null}
-              {meetings.data ? (
-                <p className="source-note">
-                  Source{' '}
-                  <a
-                    href="https://openf1.org/docs/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    OpenF1 <ExternalLink size={11} aria-hidden="true" />
-                    <span className="sr-only"> (opens in a new tab)</span>
-                  </a>{' '}
-                  · refreshed{' '}
-                  {formatDate(meetings.data.retrievedAtUtc, {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    timeZoneName: 'short',
-                  })}
-                </p>
-              ) : null}
-            </section>
-
-            <section
-              className="session-column"
-              aria-labelledby="sessions-heading"
-              aria-live="polite"
-            >
-              <div className="browser-section-heading">
-                <h3 id="sessions-heading">
-                  {selectedMeeting?.circuitShortName ?? 'Sessions'}
-                </h3>
-                <span>{sessions.data?.items.length ?? '—'}</span>
-              </div>
-              {!selectedMeeting ? (
-                <div className="session-empty">
-                  <CalendarDays size={22} aria-hidden="true" />
-                  <p>
-                    Choose an event to see its practice, qualifying, sprint, and
-                    race sessions.
-                  </p>
-                </div>
-              ) : null}
-              {selectedMeeting?.isCancelled ? (
-                <p className="session-empty">This meeting was cancelled.</p>
-              ) : null}
-              {selectedMeeting && sessions.isPending ? (
-                <p className="browser-message" role="status">
-                  Loading sessions…
-                </p>
-              ) : null}
-              {selectedMeeting && sessions.isError ? (
-                <div className="browser-message" role="alert">
-                  <span>{sessions.error.message}</span>
-                  <Button
-                    size="small"
-                    variant="secondary"
-                    onClick={() => void sessions.refetch()}
-                  >
-                    Retry
-                  </Button>
-                </div>
-              ) : null}
-              {selectedMeeting &&
-              sessions.isSuccess &&
-              sessions.data.items.length === 0 ? (
-                <p className="session-empty">
-                  OpenF1 lists no sessions for this event.
-                </p>
-              ) : null}
-              {selectedMeeting && sessions.isSuccess ? (
-                <div className="session-list">
-                  {sessions.data.items.map((session) => (
-                    <SessionOption
-                      key={session.sessionKey}
-                      session={session}
-                      selected={session.sessionKey === selection.sessionKey}
-                      onSelect={selectSession}
-                    />
-                  ))}
-                </div>
-              ) : null}
-            </section>
+                  )
+                })}
+              </ol>
+            ) : null}
           </div>
+          {meetings.data ? (
+            <p className="source-note">
+              Calendar from{' '}
+              <a
+                href="https://openf1.org/docs/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                OpenF1 <ExternalLink size={11} aria-hidden="true" />
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+              , refreshed{' '}
+              {formatDate(meetings.data.retrievedAtUtc, {
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+            </p>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -416,36 +373,18 @@ export function ReplayLibrary({ selection }: { selection: ReplaySelection }) {
           </details>
         </>
       ) : (
-        <section
-          className="replay-empty-state"
-          aria-labelledby="replay-empty-title"
-        >
-          <div className="replay-empty-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </div>
-          <span className="section-kicker">
-            <span /> HISTORICAL TIMING
-          </span>
-          <h2 id="replay-empty-title">
-            Pick a session.
-            <br />
-            Take your place on the pit wall.
-          </h2>
-          <p>
-            Browse completed Grand Prix sessions. Position, classification, and
-            telemetry streams vary by event and are checked when selected.
-          </p>
-          <Button
-            className="session-browser-trigger"
-            onClick={() => setBrowserOpen(true)}
-          >
-            <CalendarDays size={15} aria-hidden="true" /> Browse historical
-            sessions
-          </Button>
-          <small>OpenF1 historical data · sessions from 2023 onward</small>
-        </section>
+        <SeasonHome
+          year={selection.year}
+          onYear={(year) =>
+            navigate({ year, meetingKey: null, sessionKey: null })
+          }
+          onOpenRound={(meeting) => {
+            selectMeeting(meeting)
+            setBrowserOpen(true)
+          }}
+          onOpenSession={selectSession}
+          onBrowse={() => setBrowserOpen(true)}
+        />
       )}
     </section>
   )
@@ -461,29 +400,27 @@ function SessionOption({
   onSelect: (session: RaceSession) => void
 }) {
   const upcoming = Date.parse(session.dateStart) > pageLoadedAtMs
+  const main = /^(race|sprint)$/i.test(session.sessionName)
   return (
     <button
       type="button"
-      className={`session-option ${selected ? 'selected' : ''}`}
+      className="session-option"
+      data-main={main || undefined}
       aria-pressed={selected}
       disabled={upcoming}
       onClick={() => onSelect(session)}
     >
-      <span className="session-type">{session.sessionType || 'Session'}</span>
       <strong>{session.sessionName}</strong>
       <span className="session-time">
-        {formatDate(session.dateStart, {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        })}
+        {upcoming
+          ? 'Upcoming'
+          : formatDate(session.dateStart, {
+              weekday: 'short',
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
       </span>
-      <span className={`session-coverage ${upcoming ? 'upcoming' : ''}`}>
-        {upcoming ? 'Upcoming' : 'Check replay coverage'}
-      </span>
-      {selected ? <Check size={15} aria-hidden="true" /> : null}
+      {selected ? <Check size={14} aria-hidden="true" /> : null}
     </button>
   )
 }

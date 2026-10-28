@@ -1,4 +1,5 @@
 using Microsoft.OpenApi;
+using PitLane.Api.Features.Archive;
 using PitLane.Api.Features.Capabilities;
 using PitLane.Api.Features.HistoricalSessions;
 
@@ -9,12 +10,19 @@ builder.Services.AddHealthChecks();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<OpenF1RequestGate>();
-builder.Services.AddHttpClient<IHistoricalSessionProvider, OpenF1HistoricalSessionProvider>(client =>
+builder.Services.AddHttpClient<OpenF1HistoricalSessionProvider>(client =>
 {
     client.BaseAddress = new Uri("https://api.openf1.org/v1/");
     client.Timeout = TimeSpan.FromSeconds(12);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("PitLane/0.1");
 });
+// Finished sessions are served from the disk archive; OpenF1 fills the gaps.
+builder.Services.AddSingleton<SessionArchive>();
+builder.Services.AddTransient<ArchivedHistoricalSessionProvider>();
+builder.Services.AddTransient<IHistoricalSessionProvider>(services =>
+    services.GetRequiredService<ArchivedHistoricalSessionProvider>());
+builder.Services.AddSingleton<SessionDownloader>();
+builder.Services.AddHostedService(services => services.GetRequiredService<SessionDownloader>());
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -41,6 +49,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapHealthChecks("/api/health");
 app.MapHistoricalSessions();
+app.MapArchive();
 app.MapGet("/api/capabilities", (ICapabilityCatalog catalog) => TypedResults.Ok(catalog.GetCapabilities()))
     .WithName("GetCapabilities")
     .WithTags("Workspace")

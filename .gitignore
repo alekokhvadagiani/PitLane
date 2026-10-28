@@ -24,6 +24,10 @@ Thumbs.db
 !.env.sample
 !.env.template
 
+# Local session archive (downloaded OpenF1 data)
+data/
+src/PitLane.Api/data/
+
 # Test results, coverage, logs, and caches
 playwright-report/
 playwright/.cache/

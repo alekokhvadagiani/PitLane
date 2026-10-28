@@ -76,6 +76,11 @@ public sealed record HistoricalRaceControlMessage(
     int? DriverNumber,
     int? LapNumber);
 
+public sealed record HistoricalTeamRadio(
+    DateTimeOffset Date,
+    int DriverNumber,
+    string RecordingUrl);
+
 public sealed record HistoricalSessionResult(
     int DriverNumber,
     bool Dnf,
